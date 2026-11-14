@@ -1,0 +1,16 @@
+# Baixados pelo fetch.sh (GPL-2.0 e WAD shareware, não versionados)
+/doomgeneric/
+/*.wad
+/*.WAD
+
+# Saídas de compilação e de execução
+/out/
+/build/
+*.o
+*.elf
+*.bin
+*.map
+*.log
+
+# HOME temporário das ferramentas (semgrep)
+.home/
