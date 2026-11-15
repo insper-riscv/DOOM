@@ -52,4 +52,49 @@ enum doom_result_word
     DOOM_RES_WORDS = 16
 };
 
+/*
+ * Medicao de CPI por janelas de quadros (DOOM_MEASURE, desligado por padrao). A cada
+ * DOOM_MEAS_STEP quadros entregues, DG_DrawFrame grava um instantaneo dos contadores
+ * (cycle, instret e, na placa com Zihpm, os nove contadores de eventos) no bloco que
+ * comeca em DOOM_MEASURE_ADDR (-D do build, scripts/layout.sh), na ultima pagina da SDRAM.
+ * O hospedeiro le o bloco com o `dump-ram` e scripts/measure_report.py calcula os deltas
+ * entre instantaneos consecutivos. O cabecalho tem 16 palavras; cada instantaneo, 16.
+ *
+ *   cabecalho: magia, quantidade de instantaneos, passo (quadros), numero de contadores
+ *              de evento, e os nove codigos de evento configurados (palavras 4 a 12)
+ *   instantaneo: quadro, cycle lo, cycle hi, instret lo, instret hi, nove contadores
+ *              de evento (32 bits baixos), uma palavra de enchimento
+ */
+#define DOOM_MEAS_MAGIC 0x5341454Du /* bytes "MEAS" */
+#define DOOM_MEAS_STEP 100u         /* quadros entre instantaneos */
+#define DOOM_MEAS_MAX 40u           /* instantaneos que cabem no bloco */
+#define DOOM_MEAS_HPM 9u            /* contadores de evento lidos (indices 3 a 11) */
+#define DOOM_MEAS_SNAP_WORDS 16u
+#define DOOM_MEAS_HEAD_WORDS 16u
+
+enum doom_meas_head_word
+{
+    DOOM_MEAS_H_MAGIC = 0,
+    DOOM_MEAS_H_COUNT = 1,
+    DOOM_MEAS_H_STEP = 2,
+    DOOM_MEAS_H_NHPM = 3,
+    DOOM_MEAS_H_EVENTS = 4 /* nove palavras, de 4 a 12 */
+};
+
+enum doom_meas_snap_word
+{
+    DOOM_MEAS_S_FRAME = 0,
+    DOOM_MEAS_S_CYC_LO = 1,
+    DOOM_MEAS_S_CYC_HI = 2,
+    DOOM_MEAS_S_INS_LO = 3,
+    DOOM_MEAS_S_INS_HI = 4,
+    DOOM_MEAS_S_HPM = 5 /* nove palavras, de 5 a 13 */
+};
+
+/* Configura os contadores de evento e zera mcountinhibit (no-op sem DOOM_MEASURE_HPM) */
+void doom_measure_init(void);
+
+/* Grava um instantaneo se o quadro entregue e multiplo do passo (no-op sem DOOM_MEASURE) */
+void doom_measure_snapshot(uint32_t frames_drawn);
+
 #endif

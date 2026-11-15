@@ -268,6 +268,7 @@ int main(void)
     static char *args[] = { DOOM_ARGS };
 
     result_clear();
+    doom_measure_init();
     doomgeneric_Create((int)(sizeof(args) / sizeof(args[0])), args);
     for (;;)
     {

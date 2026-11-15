@@ -126,3 +126,16 @@ The simulation thus proves the chain BOOT_MEMORY, loader, jump and start of the 
 | 3 | Corrupted image in SDRAM or on read | Different CRC-32 | `load-ram` checks the read-back; a different CRC with a correct read-back points to a core bug |
 | 4 | Console never scanned | No text on screen | The result block still holds |
 | 5 | Instruction cache | The loader runs `fence.i` before the jump | A hang right at the start, with no text |
+
+## 11. CPI measurement by frame windows
+
+With `MEASURE=1` at build time (`layout` and `board` targets), `DG_DrawFrame` stores, every 100 delivered frames, a snapshot of `cycle`, `instret` and, on the board, the nine Zihpm event counters (indexes 3 to 11: mul/div stall, external RAM wait, taken branch, misaligned access, instruction cache miss, data cache miss, FLASH wait, load-use stall and fused operation) in the block of `scripts/layout.sh` (`MEASURE_ADDR`, 0x43FFF100, 64 B header and 40 snapshots of 64 B). `MEASURE_STOP=N` ends the game when frame N is delivered. A build without `MEASURE` is identical to the previous one.
+
+```bash
+MEASURE=1 MEASURE_STOP=400 sh scripts/image.sh
+# after load-ram and the run:
+riscv-tools --root "$INSPER_RISCV" --config src/cyclone-v/doom/config.yaml dump-ram build-board/meas.mif --start-word 16776256 --words 656
+uv run --no-project scripts/measure_report.py build-board/meas.mif
+```
+
+On Spike (`TARGET=layout MEASURE=1`) the CRC-32 of the last frame stays `67371a4f` and the instructions per frame stay 3,147,534.

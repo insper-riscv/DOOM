@@ -68,6 +68,118 @@ uint64_t doom_read_cycle(void)
     return ((uint64_t)hi << 32) | lo;
 }
 
+#ifdef DOOM_MEASURE
+
+/* Bloco de medicao na SDRAM (doom_platform.h), lido pelo dump-ram */
+#define MEAS ((volatile uint32_t *)(uintptr_t)DOOM_MEASURE_ADDR)
+
+#ifdef DOOM_MEASURE_HPM
+
+/* Codigos de evento do Zihpm (Core/src/Zicsr/csr_event_consts.vhd), um por contador de indice 3 a 11:
+ * 1 parada de mul/div, 2 espera por RAM externa, 3 desvio tomado, 4 acesso desalinhado,
+ * 5 falha da cache de instrucoes, 6 falha da cache de dados, 7 espera por FLASH,
+ * 8 parada por dependencia de load, 9 operacao fundida */
+static const uint8_t meas_events[DOOM_MEAS_HPM] = { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+
+/* Escreve o seletor de evento mhpmeventN (CSR 0x320 + N) */
+#define HPM_EVENT_WRITE(csr, code) __asm__ volatile("csrw " #csr ", %0" ::"r"(code))
+
+/* Le o contador hpmcounterN (CSR 0xC00 + N), so os 32 bits baixos; k e o indice menos 3 */
+static uint32_t meas_hpm_read(uint32_t k)
+{
+    uint32_t v = 0;
+
+    switch (k)
+    {
+    case 0: __asm__ volatile("csrr %0, 0xC03" : "=r"(v)); break;
+    case 1: __asm__ volatile("csrr %0, 0xC04" : "=r"(v)); break;
+    case 2: __asm__ volatile("csrr %0, 0xC05" : "=r"(v)); break;
+    case 3: __asm__ volatile("csrr %0, 0xC06" : "=r"(v)); break;
+    case 4: __asm__ volatile("csrr %0, 0xC07" : "=r"(v)); break;
+    case 5: __asm__ volatile("csrr %0, 0xC08" : "=r"(v)); break;
+    case 6: __asm__ volatile("csrr %0, 0xC09" : "=r"(v)); break;
+    case 7: __asm__ volatile("csrr %0, 0xC0A" : "=r"(v)); break;
+    default: __asm__ volatile("csrr %0, 0xC0B" : "=r"(v)); break;
+    }
+    return v;
+}
+
+#endif /* DOOM_MEASURE_HPM */
+
+void doom_measure_init(void)
+{
+    MEAS[DOOM_MEAS_H_MAGIC] = 0;
+    MEAS[DOOM_MEAS_H_COUNT] = 0;
+    MEAS[DOOM_MEAS_H_STEP] = DOOM_MEAS_STEP;
+#ifdef DOOM_MEASURE_HPM
+    MEAS[DOOM_MEAS_H_NHPM] = DOOM_MEAS_HPM;
+    /* mcountinhibit = 0: todos os contadores contam; depois o evento de cada um */
+    __asm__ volatile("csrw 0x320, zero");
+    HPM_EVENT_WRITE(0x323, meas_events[0]);
+    HPM_EVENT_WRITE(0x324, meas_events[1]);
+    HPM_EVENT_WRITE(0x325, meas_events[2]);
+    HPM_EVENT_WRITE(0x326, meas_events[3]);
+    HPM_EVENT_WRITE(0x327, meas_events[4]);
+    HPM_EVENT_WRITE(0x328, meas_events[5]);
+    HPM_EVENT_WRITE(0x329, meas_events[6]);
+    HPM_EVENT_WRITE(0x32A, meas_events[7]);
+    HPM_EVENT_WRITE(0x32B, meas_events[8]);
+    for (uint32_t k = 0; k < DOOM_MEAS_HPM; k++)
+    {
+        MEAS[DOOM_MEAS_H_EVENTS + k] = meas_events[k];
+    }
+#else
+    MEAS[DOOM_MEAS_H_NHPM] = 0;
+#endif
+}
+
+void doom_measure_snapshot(uint32_t frames)
+{
+    if (frames % DOOM_MEAS_STEP != 0)
+    {
+        return;
+    }
+
+    uint32_t idx = MEAS[DOOM_MEAS_H_COUNT];
+
+    if (idx >= DOOM_MEAS_MAX)
+    {
+        return;
+    }
+
+    volatile uint32_t *s = MEAS + DOOM_MEAS_HEAD_WORDS + idx * DOOM_MEAS_SNAP_WORDS;
+    uint64_t cyc = doom_read_cycle();
+    uint64_t ins = doom_read_instret();
+
+    s[DOOM_MEAS_S_FRAME] = frames;
+    s[DOOM_MEAS_S_CYC_LO] = (uint32_t)cyc;
+    s[DOOM_MEAS_S_CYC_HI] = (uint32_t)(cyc >> 32);
+    s[DOOM_MEAS_S_INS_LO] = (uint32_t)ins;
+    s[DOOM_MEAS_S_INS_HI] = (uint32_t)(ins >> 32);
+#ifdef DOOM_MEASURE_HPM
+    for (uint32_t k = 0; k < DOOM_MEAS_HPM; k++)
+    {
+        s[DOOM_MEAS_S_HPM + k] = meas_hpm_read(k);
+    }
+#endif
+    __sync_synchronize();
+    MEAS[DOOM_MEAS_H_COUNT] = idx + 1u;
+    MEAS[DOOM_MEAS_H_MAGIC] = DOOM_MEAS_MAGIC;
+}
+
+#else
+
+void doom_measure_init(void)
+{
+}
+
+void doom_measure_snapshot(uint32_t frames)
+{
+    (void)frames;
+}
+
+#endif /* DOOM_MEASURE */
+
 #ifdef DOOM_USE_TIME_CSR
 /* Le o CSR time (64 bits) com a releitura do hi que o RV32 exige */
 static uint64_t read_time(void)
@@ -137,6 +249,16 @@ void DG_SetWindowTitle(const char *title)
 
 void DG_DrawFrame(void)
 {
+    /* Instantaneo dos contadores, antes de qualquer outro trabalho desta chamada */
+    doom_measure_snapshot(frames_drawn + 1u);
+#ifdef DOOM_MEASURE_STOP
+    /* Janela pedida concluida: encerra (o _exit grava o resumo e fica repetindo-o) */
+    if (frames_drawn + 1u == DOOM_MEASURE_STOP)
+    {
+        extern void _exit(int);
+        _exit(0);
+    }
+#endif
     if (frames_drawn == 0)
     {
         instret_first_frame = doom_read_instret();

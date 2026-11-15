@@ -126,3 +126,16 @@ A simulação prova então a cadeia BOOT_MEMORY, carregador, salto e início da 
 | 3 | Imagem corrompida na SDRAM ou na leitura | CRC-32 diferente | `load-ram` confere a leitura de volta; um CRC diferente com a leitura correta indica bug do núcleo |
 | 4 | Console sem varredura | Nenhum texto na tela | O bloco de resultado continua valendo |
 | 5 | Cache de instruções | O carregador executa `fence.i` antes do salto | Travamento logo no início, sem texto |
+
+## 11. Medicao de CPI por janelas de quadros
+
+Com `MEASURE=1` no build (alvos `layout` e `board`), `DG_DrawFrame` grava, a cada 100 quadros entregues, um instantaneo de `cycle`, `instret` e, na placa, dos nove contadores de evento do Zihpm (indices 3 a 11: parada de mul/div, espera por RAM externa, desvio tomado, acesso desalinhado, falha da cache de instrucoes, falha da cache de dados, espera por FLASH, parada por load-use e operacao fundida) no bloco de `scripts/layout.sh` (`MEASURE_ADDR`, 0x43FFF100, 64 B de cabecalho e 40 instantaneos de 64 B). `MEASURE_STOP=N` encerra o jogo ao entregar o quadro N. O build sem `MEASURE` e identico ao anterior.
+
+```bash
+MEASURE=1 MEASURE_STOP=400 sh scripts/image.sh
+# depois do load-ram e da execucao:
+riscv-tools --root "$INSPER_RISCV" --config src/cyclone-v/doom/config.yaml dump-ram build-board/meas.mif --start-word 16776256 --words 656
+uv run --no-project scripts/measure_report.py build-board/meas.mif
+```
+
+No Spike (`TARGET=layout MEASURE=1`) o CRC-32 do ultimo quadro continua `67371a4f` e as instrucoes por quadro continuam 3.147.534.

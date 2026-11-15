@@ -75,6 +75,22 @@ esac
 if [ "$TARGET" = board ]; then
   PORT_DEFS="$PORT_DEFS -DDOOM_CONSOLE_UART -DDOOM_PLATFORM_CLOCK -I$RT"
 fi
+# Medicao de CPI (MEASURE=1, so nos alvos layout e board): instantaneos de cycle e instret a cada
+# 100 quadros no bloco de scripts/layout.sh; na placa, tambem os contadores de evento do Zihpm.
+# MEASURE_STOP=N encerra o jogo ao entregar o quadro N (o _exit grava o resumo)
+if [ "${MEASURE:-0}" = 1 ]; then
+  if [ "$TARGET" = spike ]; then
+    echo "MEASURE=1 pede TARGET=layout ou board (o mapa da SDRAM)" >&2
+    exit 1
+  fi
+  PORT_DEFS="$PORT_DEFS -DDOOM_MEASURE -DDOOM_MEASURE_ADDR=$MEASURE_ADDR"
+  if [ "$TARGET" = board ]; then
+    PORT_DEFS="$PORT_DEFS -DDOOM_MEASURE_HPM"
+  fi
+  if [ -n "${MEASURE_STOP:-}" ]; then
+    PORT_DEFS="$PORT_DEFS -DDOOM_MEASURE_STOP=$MEASURE_STOP"
+  fi
+fi
 # Codigo da doomgeneric e C89/C99 de terceiros: sem os avisos do projeto
 GAME_FLAGS="-std=gnu99 -w -fcommon -ffunction-sections"
 

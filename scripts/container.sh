@@ -21,6 +21,6 @@ run_in_container() {
     exit 1
   fi
   exec docker run --rm --user "$(id -u):$(id -g)" -e HOME=/w/.home \
-    -e DOOM_IN_CONTAINER=1 -e OPT -e OUT -e RAM_ORIGIN -e RAM_LENGTH -e TARGET -e PLATFORM_DIR \
+    -e DOOM_IN_CONTAINER=1 -e OPT -e OUT -e RAM_ORIGIN -e RAM_LENGTH -e TARGET -e PLATFORM_DIR -e MEASURE -e MEASURE_STOP \
     -v "$PWD":/w -w /w "$DEV_TOOLS_IMAGE" sh "/w/$script" "$@"
 }
