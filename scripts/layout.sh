@@ -1,0 +1,24 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Biblioteca incluida (com ".") por build.sh, run.sh e image.sh; nao e executada sozinha.
+# Fonte unica do mapa da SDRAM da plataforma doom que a porta usa. Todos os enderecos
+# sao de byte, na SDRAM (base 0x40000000, 64 MB). Ver docs/pt-br/PLACA.md.
+#
+#   0x40000000  imagem (codigo, constantes, dados): cabe em ate 1 MiB com o bss
+#   0x40100000  WAD (4.196.020 B), carregada por `load-ram --wad`
+#   0x40580000  framebuffer 320x200 XRGB de 32 bits (256.000 B), fixo para o dump-ram
+#   0x405C0000  inicio do heap (a zona do jogo, 6 MB, sai daqui)
+#   0x43FEF000  base da pilha (64 KiB abaixo do topo livre)
+#   0x43FFF000  bloco de resultado (64 B) na ultima pagina da SDRAM, a que a cache ignora
+
+RAM_ORIGIN=${RAM_ORIGIN:-0x40000000}
+WAD_ADDR=0x40100000
+WAD_SIZE=4196020
+FB_ADDR=0x40580000
+FB_BYTES=256000
+HEAP_START=0x405C0000
+RESULT_ADDR=0x43FFF000
+# Termina onde comeca a ultima pagina da SDRAM (0x43FFF000): o topo da pilha
+BOARD_RAM_LENGTH=0x3FFF000
+# Palavra da campainha (platform.yaml, reserved.launch) e magia do carregador
+LAUNCH_ADDR=0x43FFFFF8

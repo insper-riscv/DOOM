@@ -31,7 +31,9 @@ The script runs in the `ghcr.io/insper-riscv/dev_tools:latest` container and pro
 | Variable | Default | Meaning |
 | :--- | :--- | :--- |
 | `OPT` | `-O2` | Optimization level |
-| `OUT` | `build` | Output folder |
+| `TARGET` | `spike` | `spike`, `layout` or `board` (see [BOARD.md](BOARD.md)) |
+| `PLATFORM_DIR` | `Insper-RISC-V/src/cyclone-v/doom` | Folder of the `doom` platform, `board` target only |
+| `OUT` | `build` (`build-$TARGET` for the other targets) | Output folder |
 | `RAM_ORIGIN` | `0x40000000` | RAM origin |
 | `RAM_LENGTH` | `0x04000000` | RAM length (64 MiB) |
 | `DEV_TOOLS_IMAGE` | `ghcr.io/insper-riscv/dev_tools:latest` | Container image |
@@ -75,5 +77,6 @@ The virtual clock counts 100000 instructions per millisecond (100 MHz at 1 instr
 | :--- | :--- |
 | `port/doom_platform.c` | The `DG_*` functions, the virtual clock, frame counting and the CRC-32 (single framebuffer conversion point) |
 | `port/doom_wad_mem.c` | In-memory WAD backend using `memcpy`, with no `open`, `read` or `lseek` |
-| `port/doom_runtime.c` | Spike console output (HTIF), filesystem stubs, `_exit` with the summary, and `main` |
-| `port/link.ld` | Single-RAM linker script |
+| `port/doom_runtime.c` | Console output over the Spike HTIF or the JTAG UART (`DOOM_CONSOLE_UART`), filesystem stubs, `_exit` with the summary and the result block, and `main` |
+| `port/link.ld` | Single-RAM linker script, with the WAD and the heap at fixed addresses in the `layout` and `board` targets |
+| `scripts/layout.sh` | Single source of the board SDRAM map |

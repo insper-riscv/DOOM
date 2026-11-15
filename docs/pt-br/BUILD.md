@@ -31,7 +31,9 @@ O script executa no container `ghcr.io/insper-riscv/dev_tools:latest` e gera `bu
 | Variável | Padrão | Significado |
 | :--- | :--- | :--- |
 | `OPT` | `-O2` | Nível de otimização |
-| `OUT` | `build` | Pasta de saída |
+| `TARGET` | `spike` | `spike`, `layout` ou `board` (ver [PLACA.md](PLACA.md)) |
+| `PLATFORM_DIR` | `Insper-RISC-V/src/cyclone-v/doom` | Pasta da plataforma `doom`, só no alvo `board` |
+| `OUT` | `build` (`build-$TARGET` nos outros alvos) | Pasta de saída |
 | `RAM_ORIGIN` | `0x40000000` | Origem da RAM |
 | `RAM_LENGTH` | `0x04000000` | Comprimento da RAM (64 MiB) |
 | `DEV_TOOLS_IMAGE` | `ghcr.io/insper-riscv/dev_tools:latest` | Imagem do container |
@@ -75,5 +77,6 @@ O relógio virtual conta 100000 instruções por milissegundo (100 MHz com 1 ins
 | :--- | :--- |
 | `port/doom_platform.c` | As funções `DG_*`, o relógio virtual, a contagem de quadros e o CRC-32 (ponto único de conversão do framebuffer) |
 | `port/doom_wad_mem.c` | Backend de WAD em memória, com `memcpy`, sem `open`, `read` nem `lseek` |
-| `port/doom_runtime.c` | Saída no console do Spike (HTIF), stubs de sistema de arquivos, `_exit` com o resumo e o `main` |
-| `port/link.ld` | Linker script de RAM única |
+| `port/doom_runtime.c` | Saída no console do Spike (HTIF) ou na JTAG UART (`DOOM_CONSOLE_UART`), stubs de sistema de arquivos, `_exit` com o resumo e o bloco de resultado, e o `main` |
+| `port/link.ld` | Linker script de RAM única, com a WAD e o heap em endereços fixos nos alvos `layout` e `board` |
+| `scripts/layout.sh` | Fonte única do mapa da SDRAM da placa |

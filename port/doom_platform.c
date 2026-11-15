@@ -54,6 +54,20 @@ uint64_t doom_read_instret(void)
     return ((uint64_t)hi << 32) | lo;
 }
 
+/* Le o CSR cycle (64 bits) com a releitura do hi que o RV32 exige */
+uint64_t doom_read_cycle(void)
+{
+    uint32_t hi, lo, hi2;
+
+    do
+    {
+        __asm__ volatile("rdcycleh %0" : "=r"(hi));
+        __asm__ volatile("rdcycle %0" : "=r"(lo));
+        __asm__ volatile("rdcycleh %0" : "=r"(hi2));
+    } while (hi != hi2);
+    return ((uint64_t)hi << 32) | lo;
+}
+
 #ifdef DOOM_USE_TIME_CSR
 /* Le o CSR time (64 bits) com a releitura do hi que o RV32 exige */
 static uint64_t read_time(void)
@@ -72,7 +86,14 @@ static uint64_t read_time(void)
 
 void DG_Init(void)
 {
-    /* Spike: sem tela nem teclado para inicializar */
+#ifdef DOOM_FB_ADDR
+    /*
+     * Framebuffer num endereco fixo da SDRAM (scripts/layout.sh): o `dump-ram` o
+     * le sem precisar do ponteiro do malloc. A doomgeneric ja alocou o dela antes
+     * de chamar DG_Init; aquela area fica sem uso.
+     */
+    DG_ScreenBuffer = (pixel_t *)(uintptr_t)DOOM_FB_ADDR;
+#endif
 }
 
 void DG_SleepMs(uint32_t ms)
@@ -85,6 +106,11 @@ void DG_SleepMs(uint32_t ms)
     }
 }
 
+#ifndef DOOM_PLATFORM_CLOCK
+/*
+ * Na placa (DOOM_PLATFORM_CLOCK) esta funcao vem de runtime/doom_clock.c da
+ * plataforma doom, copiado pelo build; aqui fica so a dos alvos do Spike.
+ */
 uint32_t DG_GetTicksMs(void)
 {
 #ifdef DOOM_USE_TIME_CSR
@@ -94,6 +120,7 @@ uint32_t DG_GetTicksMs(void)
     return (uint32_t)(doom_read_instret() / 100000u);
 #endif
 }
+#endif
 
 int DG_GetKey(int *pressed, unsigned char *key)
 {

@@ -29,6 +29,7 @@ PHDRS
 	rodata PT_LOAD;
 	ram_init PT_LOAD;
 	ram PT_LOAD;
+	wadfix PT_LOAD;
 	tls_init PT_TLS;
 	tls PT_TLS;
 }
@@ -204,8 +205,19 @@ SECTIONS
 	PROVIDE( end = _end );
 	PROVIDE( __bss_size = __bss_end - __bss_start );
 
-	/* O resto da RAM vira heap, menos a pilha no topo */
-	PROVIDE( __heap_start = __end );
+	/*
+	 * Alvo "layout" (Spike com o mapa da placa): a WAD fica no ELF, no endereco fixo
+	 * WAD_ADDR, que a placa recebe por JTAG. Na placa esta secao nao existe.
+	 */
+	.wadfix (DEFINED(WAD_ADDR) ? WAD_ADDR : .) : AT(DEFINED(WAD_ADDR) ? WAD_ADDR : .) {
+		KEEP (*(.wadfix))
+	} >ram :wadfix
+
+	/*
+	 * Com HEAP_START o heap comeca depois da WAD e do framebuffer, que a carga e o
+	 * dump-ram enderecam; sem ele comeca no fim do bss (build do Spike).
+	 */
+	PROVIDE( __heap_start = DEFINED(HEAP_START) ? HEAP_START : __end );
 	PROVIDE( __heap_end = __stack - (DEFINED(__stack_size) ? __stack_size : 0x00010000) );
 	PROVIDE( __heap_size = __heap_end - __heap_start );
 
@@ -227,6 +239,11 @@ SECTIONS
 	.debug_str      0 : { *(.debug_str) }
 	.gnu.attributes 0 : { KEEP (*(.gnu.attributes)) }
 }
+
+/* A imagem (com o bss) tem de acabar antes da WAD, e o heap comeca depois do framebuffer */
+ASSERT( __end <= (DEFINED(WAD_ADDR) ? WAD_ADDR : __end), "ERROR: image and bss overlap the WAD");
+ASSERT( __end <= (DEFINED(HEAP_START) ? HEAP_START : __end), "ERROR: image and bss overlap the heap");
+ASSERT( __heap_start <= __heap_end, "ERROR: no room for the heap");
 
 ASSERT( __data_size == __data_source_size,
     "ERROR: .data/.tdata load size does not match RAM size");

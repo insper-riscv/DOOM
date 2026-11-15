@@ -1,11 +1,13 @@
 # Baixados pelo fetch.sh (GPL-2.0 e WAD shareware, não versionados)
 /doomgeneric/
+/Insper-RISC-V/
 /*.wad
 /*.WAD
 
 # Saídas de compilação e de execução
 /out/
 /build/
+/build-*/
 *.o
 *.elf
 *.bin
