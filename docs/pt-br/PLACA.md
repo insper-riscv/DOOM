@@ -166,14 +166,19 @@ O decodificador do conjunto 2 (`port/doom_kbd.c`) trata o prefixo `E0`, o `F0` d
 
 | Tecla | Ação no jogo |
 | :--- | :--- |
-| Setas | Andar para a frente e para trás (cima e baixo) e girar a câmera (esquerda e direita) |
-| Ctrl esquerdo ou direito | Atirar |
-| Espaço | Usar, abrir portas e interruptores |
+| W e S | Andar para a frente e para trás |
+| A e D | Deslizar para a esquerda e para a direita |
+| Setas esquerda e direita | Girar a câmera |
+| Setas cima e baixo | Sem função no jogo |
+| E | Usar, abrir portas e interruptores |
+| Espaço, Ctrl esquerdo ou direito | Atirar |
 | Shift | Correr |
 | Alt (com as setas esquerda e direita) | Deslizar de lado |
-| Vírgula e ponto | Deslizar para a esquerda e para a direita |
-| Enter, Esc, Tab, Backspace, F1 a F12 | Escolher e voltar nos menus, mapa, apagar, as teclas do DOOM |
-| Letras e dígitos, `-` e `=` | ASCII em minúsculas, como os menus (`y` e `n`), os nomes de save e os cheats esperam |
+| As quatro setas, Enter, Esc | Navegar e escolher nos menus |
+| Tab, Backspace, F1 a F12 | Mapa, apagar, as teclas do DOOM |
+| Letras, dígitos, `-`, `=`, vírgula e ponto | ASCII, como os menus (`y` e `n`), os nomes de save e os cheats esperam |
+
+As letras do movimento e do uso, e o espaço do tiro, são o ASCII que o decodificador entrega. O jogo as lê como `key_up`, `key_down`, `key_strafeleft`, `key_straferight`, `key_use` e `key_fire`, trocados em `I_InitInput` (`__wrap_I_InitInput`, depois do `M_LoadDefaults`). Por isso as letras seguem valendo nos menus e na digitação de texto.
 
 O teste do decodificador roda no computador: `gcc -std=gnu17 -Wall -Wextra -Werror -DDOOM_KBD_HOST_TEST -Idoomgeneric/doomgeneric -Iport scripts/test_kbd.c port/doom_kbd.c -o test_kbd && ./test_kbd`.
 

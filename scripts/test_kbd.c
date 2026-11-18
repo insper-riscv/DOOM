@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Teste no computador do decodificador de scancodes (port/doom_kbd.c, sem DOOM_VIDEO):
- *   gcc -std=gnu17 -Wall -Wextra -Werror -Idoomgeneric/doomgeneric -Iport scripts/test_kbd.c port/doom_kbd.c -o test_kbd && ./test_kbd
+ *   gcc -std=gnu17 -Wall -Wextra -Werror -DDOOM_KBD_HOST_TEST -Idoomgeneric/doomgeneric -Iport scripts/test_kbd.c port/doom_kbd.c -o test_kbd && ./test_kbd
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -88,10 +88,10 @@ int main(void)
 
     /* Ctrl esquerdo e direito: duas teclas fisicas, soltar uma nao solta a outra por engano */
     FEED(0x14, 0xE0, 0x14, 0xF0, 0x14, 0xE0, 0xF0, 0x14);
-    expect(1, KEY_FIRE, "ctrl esquerdo");
-    expect(1, KEY_FIRE, "ctrl direito");
-    expect(0, KEY_FIRE, "solta ctrl esquerdo");
-    expect(0, KEY_FIRE, "solta ctrl direito");
+    expect(1, ' ', "ctrl esquerdo");
+    expect(1, ' ', "ctrl direito");
+    expect(0, ' ', "solta ctrl esquerdo");
+    expect(0, ' ', "solta ctrl direito");
     expect_empty("ctrl");
 
     /* Shift, Alt, Espaco, Enter, Esc, Tab, Backspace */
@@ -100,7 +100,7 @@ int main(void)
     expect(1, KEY_RSHIFT, "shift direito");
     expect(1, KEY_LALT, "alt");
     expect(1, KEY_LALT, "alt direito");
-    expect(1, KEY_USE, "espaco");
+    expect(1, ' ', "espaco");
     expect(1, KEY_ENTER, "enter");
     expect(1, KEY_ENTER, "enter do teclado numerico");
     expect(1, KEY_ESCAPE, "esc");
@@ -139,7 +139,7 @@ int main(void)
         { 0x44, 'o' }, { 0x4D, 'p' }, { 0x15, 'q' }, { 0x2D, 'r' }, { 0x1B, 's' }, { 0x2C, 't' }, { 0x3C, 'u' },
         { 0x2A, 'v' }, { 0x1D, 'w' }, { 0x22, 'x' }, { 0x35, 'y' }, { 0x1A, 'z' }, { 0x45, '0' }, { 0x16, '1' },
         { 0x1E, '2' }, { 0x26, '3' }, { 0x25, '4' }, { 0x2E, '5' }, { 0x36, '6' }, { 0x3D, '7' }, { 0x3E, '8' },
-        { 0x46, '9' }, { 0x4E, KEY_MINUS }, { 0x55, KEY_EQUALS }, { 0x41, KEY_STRAFE_L }, { 0x49, KEY_STRAFE_R },
+        { 0x46, '9' }, { 0x4E, KEY_MINUS }, { 0x55, KEY_EQUALS }, { 0x41, ',' }, { 0x49, '.' },
     };
 
     for (unsigned i = 0; i < sizeof(table) / sizeof(table[0]); i++)

@@ -166,14 +166,19 @@ The set 2 decoder (`port/doom_kbd.c`) handles the `E0` prefix, the `F0` break, t
 
 | Key | Game action |
 | :--- | :--- |
-| Arrows | Move forward and back (up and down) and turn the camera (left and right) |
-| Left or right Ctrl | Fire |
-| Space | Use, open doors and switches |
+| W and S | Move forward and back |
+| A and D | Strafe left and right |
+| Left and right arrows | Turn the camera |
+| Up and down arrows | No function in the game |
+| E | Use, open doors and switches |
+| Space, left or right Ctrl | Fire |
 | Shift | Run |
 | Alt (with the left and right arrows) | Strafe |
-| Comma and period | Strafe left and right |
-| Enter, Esc, Tab, Backspace, F1 to F12 | Choose and go back in the menus, map, erase, the DOOM keys |
-| Letters and digits, `-` and `=` | Lowercase ASCII, as the menus (`y` and `n`), save names and cheats expect |
+| The four arrows, Enter, Esc | Navigate and choose in the menus |
+| Tab, Backspace, F1 to F12 | Map, erase, the DOOM keys |
+| Letters, digits, `-`, `=`, comma and period | ASCII, as the menus (`y` and `n`), save names and cheats expect |
+
+The movement and use letters, and the space for fire, are the ASCII the decoder delivers. The game reads them as `key_up`, `key_down`, `key_strafeleft`, `key_straferight`, `key_use` and `key_fire`, replaced in `I_InitInput` (`__wrap_I_InitInput`, after `M_LoadDefaults`). That is why the letters keep working in menus and text entry.
 
 The decoder test runs on the computer: `gcc -std=gnu17 -Wall -Wextra -Werror -DDOOM_KBD_HOST_TEST -Idoomgeneric/doomgeneric -Iport scripts/test_kbd.c port/doom_kbd.c -o test_kbd && ./test_kbd`.
 
