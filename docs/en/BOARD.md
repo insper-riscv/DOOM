@@ -150,6 +150,7 @@ With `VIDEO=1` at build time (`layout` and `board` targets), doomgeneric is buil
 | `INTERACTIVE` | 0 | 1 runs `doom -iwad doom1.wad` (title, menu, game and attract demo) instead of `-timedemo demo1` |
 | `VSYNC` | 1 | 0 removes the wait for the start of the vertical blanking before writing the frame (with `MEASURE=1` the default is 0) |
 | `VCRC_FRAMES` | 32 | How many initial frames keep the CRC-32 of the indexes and of the palette (with `MEASURE=1` the default is 0) |
+| `PROFILE` | 0 | 1 adds to the 5 s line a `[PERFIL]` line with the kcycles and kinstructions per frame of each region of `DG_DrawFrame` (copy, preparation, vsync, write and the rest) |
 
 ### 12.1. Video
 

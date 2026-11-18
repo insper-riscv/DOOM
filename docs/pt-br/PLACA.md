@@ -150,6 +150,7 @@ Com `VIDEO=1` no build (alvos `layout` e `board`), a doomgeneric é compilada co
 | `INTERACTIVE` | 0 | 1 executa `doom -iwad doom1.wad` (título, menu, jogo e demo de atração) em vez do `-timedemo demo1` |
 | `VSYNC` | 1 | 0 tira a espera pelo início do apagamento vertical antes de escrever o quadro (com `MEASURE=1` o padrão é 0) |
 | `VCRC_FRAMES` | 32 | Quantos quadros iniciais guardam o CRC-32 dos índices e da paleta (com `MEASURE=1` o padrão é 0) |
+| `PROFILE` | 0 | 1 acrescenta à linha de 5 s uma linha `[PERFIL]` com os kciclos e as kinstruções por quadro de cada região do `DG_DrawFrame` (cópia, preparo, vsync, escrita e o resto) |
 
 ### 12.1. Vídeo
 
