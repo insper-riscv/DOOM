@@ -131,6 +131,8 @@ void doom_measure_init(void)
 #else
     MEAS[DOOM_MEAS_H_NHPM] = 0;
 #endif
+    /* instantaneo de partida (quadro 0): da a janela 0 a 100 */
+    doom_measure_snapshot(0);
 }
 
 void doom_measure_snapshot(uint32_t frames)

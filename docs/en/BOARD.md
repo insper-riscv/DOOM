@@ -129,12 +129,12 @@ The simulation thus proves the chain BOOT_MEMORY, loader, jump and start of the 
 
 ## 11. CPI measurement by frame windows
 
-With `MEASURE=1` at build time (`layout` and `board` targets), `DG_DrawFrame` stores, every 100 delivered frames, a snapshot of `cycle`, `instret` and, on the board, the nine Zihpm event counters (indexes 3 to 11: mul/div stall, external RAM wait, taken branch, misaligned access, instruction cache miss, data cache miss, FLASH wait, load-use stall and fused operation) in the block of `scripts/layout.sh` (`MEASURE_ADDR`, 0x43FFF100, 64 B header and 40 snapshots of 64 B). `MEASURE_STOP=N` ends the game when frame N is delivered. A build without `MEASURE` is identical to the previous one.
+With `MEASURE=1` at build time (`layout` and `board` targets), `DG_DrawFrame` stores, every 100 delivered frames, a snapshot of `cycle`, `instret` and, on the board, the nine Zihpm event counters (indexes 3 to 11: mul/div stall, external RAM wait, taken branch, misaligned access, instruction cache miss, data cache miss, FLASH wait, load-use stall and fused operation) in the block of `scripts/layout.sh` (`MEASURE_ADDR`, 0x43000000, 64 B header and 64 snapshots of 64 B). `MEASURE_STOP=N` ends the game when frame N is delivered. A build without `MEASURE` is identical to the previous one.
 
 ```bash
 MEASURE=1 MEASURE_STOP=400 sh scripts/image.sh
 # after load-ram and the run:
-riscv-tools --root "$INSPER_RISCV" --config src/cyclone-v/doom/config.yaml dump-ram build-board/meas.mif --start-word 16776256 --words 656
+riscv-tools --root "$INSPER_RISCV" --config src/cyclone-v/doom/config.yaml dump-ram build-board/meas.mif --start-word 12582912 --words 1040
 uv run --no-project scripts/measure_report.py build-board/meas.mif
 ```
 

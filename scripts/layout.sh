@@ -18,9 +18,9 @@ FB_ADDR=0x40580000
 FB_BYTES=256000
 HEAP_START=0x405C0000
 RESULT_ADDR=0x43FFF000
-# Bloco de medicao de CPI (MEASURE=1 no build.sh): 64 B de cabecalho e 40 instantaneos de 64 B,
-# de 0x43FFF100 a 0x43FFFB40, abaixo do stdout da plataforma (0x43FFFBE0), na mesma pagina do resultado
-MEASURE_ADDR=0x43FFF100
+# Bloco de medicao de CPI (MEASURE=1 no build.sh): 64 B de cabecalho e 64 instantaneos de 64 B,
+# de 0x43000000 a 0x43001040 (SDRAM comum, atras da cache de dados de escrita direta; cabe os 64 instantaneos)
+MEASURE_ADDR=0x43000000
 # Termina onde comeca a ultima pagina da SDRAM (0x43FFF000): o topo da pilha
 BOARD_RAM_LENGTH=0x3FFF000
 # Palavra da campainha (platform.yaml, reserved.launch) e magia do carregador

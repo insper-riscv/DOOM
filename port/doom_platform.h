@@ -67,7 +67,7 @@ enum doom_result_word
  */
 #define DOOM_MEAS_MAGIC 0x5341454Du /* bytes "MEAS" */
 #define DOOM_MEAS_STEP 100u         /* quadros entre instantaneos */
-#define DOOM_MEAS_MAX 40u           /* instantaneos que cabem no bloco */
+#define DOOM_MEAS_MAX 64u           /* instantaneos que cabem no bloco */
 #define DOOM_MEAS_HPM 9u            /* contadores de evento lidos (indices 3 a 11) */
 #define DOOM_MEAS_SNAP_WORDS 16u
 #define DOOM_MEAS_HEAD_WORDS 16u
