@@ -289,6 +289,9 @@ int DG_GetKey(int *pressed, unsigned char *key)
     } script[] = {
 #if DOOM_TEST_KEYS == 1
         { 600u, { 0x09 }, 1 }, { 610u, { 0xF0, 0x09 }, 2 }, { 700u, { 0x35 }, 1 }, { 710u, { 0xF0, 0x35 }, 2 },
+#elif DOOM_TEST_KEYS == 3
+        /* Inatividade: Esc abre o menu e, mais tarde, uma tecla no meio da espera recomeca a contagem */
+        { 300u, { 0x76 }, 1 }, { 305u, { 0xF0, 0x76 }, 2 }, { 900u, { 0x4D }, 1 }, { 905u, { 0xF0, 0x4D }, 2 },
 #else
         /* Esc abre o menu; no menu E confirma, S desce e W sobe (New Game, episodio, dificuldade) */
         { 300u, { 0x76 }, 1 }, { 305u, { 0xF0, 0x76 }, 2 }, { 330u, { 0x24 }, 1 }, { 335u, { 0xF0, 0x24 }, 2 },
@@ -306,6 +309,8 @@ int DG_GetKey(int *pressed, unsigned char *key)
 
     while (pos < sizeof(script) / sizeof(script[0]) && frames_drawn >= script[pos].frame)
     {
+        printf("[TEST] teclas no quadro %lu, relogio %lu ms\n", (unsigned long)frames_drawn,
+               (unsigned long)DG_GetTicksMs());
         for (unsigned i = 0; i < script[pos].count; i++)
         {
             doom_kbd_feed(script[pos].bytes[i]);

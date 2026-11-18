@@ -197,11 +197,14 @@ No Spike (`TARGET=layout VIDEO=1`), o CRC-32 do último quadro do `-timedemo dem
 
 ### 12.5. Reinício do jogo
 
-Com `INTERACTIVE=1` o programa tem um reinício limpo: restaura o `.data` a partir da cópia tirada no início do `main` (`DOOM_DATA_BACKUP_ADDR`, `0x43800000`) e salta para o `_start`, que zera o bss e chama o `main` de novo. A WAD e o binário já estão na SDRAM e nada é recarregado. Dois caminhos levam a ele.
+Com `INTERACTIVE=1` o programa tem um reinício limpo: restaura o `.data` a partir da cópia tirada no início do `main` (`DOOM_DATA_BACKUP_ADDR`, `0x43800000`) e salta para o `_start`, que zera o bss e chama o `main` de novo. A WAD e o binário já estão na SDRAM e nada é recarregado. Três caminhos levam a ele.
 
 | Causa | Mensagem na UART |
 | :--- | :--- |
 | Quit Game do menu (o `I_Quit` é envolvido por `--wrap`, porque o original volta ao jogo sobre o vídeo já liberado) | `[DOOM] Quit Game: reiniciando o jogo (titulo e menu)` |
 | Fim do programa por erro (`I_Error`, `exit`), depois de 3 s | `[DOOM] fim do programa (codigo N): reiniciando em 3 s` |
+| Inatividade | `[DOOM] Inatividade de 15 min: reiniciando o jogo` |
 
-No Spike, `TESTKEYS=1 VIDEO=1 INTERACTIVE=1 TARGET=layout` injeta F10 e Y (Quit Game) nos quadros 600 e 700 para testar o reinício sem teclado.
+A inatividade conta pelo relógio do jogo (`DG_GetTicksMs`) o tempo sem nenhum byte do teclado (tecla pressionada, solta ou repetida). Passado `DOOM_IDLE_RESET_MS` (15 min, ou `IDLE_MS=N` em ms no `build.sh`), o jogo reinicia se estiver numa partida, no menu aberto, num intervalo entre fases ou no final. No título e no demo de atração, com o menu fechado, não faz nada. A contagem começa no primeiro quadro de cada boot, então não dispara durante o boot.
+
+No Spike, `IDLE_MS=20000 TESTKEYS=3 VIDEO=1 INTERACTIVE=1 TARGET=layout` abre o menu no quadro 300 e aperta uma tecla no quadro 900: o jogo reinicia 20 s depois da última tecla (a 16,6 s de relógio, reinicia a 36,6 s) e não 20 s depois da abertura do menu.

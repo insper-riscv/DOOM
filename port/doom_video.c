@@ -249,6 +249,29 @@ void doom_video_frame(uint32_t frame)
     }
 #endif
 
+#ifdef DOOM_INTERACTIVE
+    /*
+     * Inatividade: qualquer byte do teclado (pressionar, soltar, repeticao) recomeca a contagem, feita pelo relogio
+     * do jogo (DG_GetTicksMs). Passado DOOM_IDLE_RESET_MS sem eventos, o jogo reinicia se estiver numa partida, no
+     * menu aberto, na tela de intervalo ou no final; no titulo e no demo de atracao (menu fechado) nao faz nada. O
+     * contador comeca no quadro 1 de cada boot (o relogio e o bss recomecam no restart), entao nunca dispara no boot.
+     */
+    static uint32_t idle_since;
+    static uint32_t idle_bytes;
+    uint32_t bytes = doom_kbd_get_stats()->bytes;
+
+    if (frame == 1u || bytes != idle_bytes)
+    {
+        idle_since = ms;
+        idle_bytes = bytes;
+    }
+    else if ((uint32_t)(ms - idle_since) >= DOOM_IDLE_RESET_MS &&
+             (menuactive || (gamestate != GS_DEMOSCREEN && !demoplayback)))
+    {
+        doom_restart_idle(ms - idle_since);
+    }
+#endif
+
     if (frame == 1u)
     {
         report_ms = ms;
