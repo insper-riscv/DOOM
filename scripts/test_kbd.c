@@ -12,6 +12,12 @@
 #include "doom_kbd.h"
 
 static int failures;
+static int menu_active;
+
+static int menu_hook(void)
+{
+    return menu_active;
+}
 
 static void feed(const unsigned char *bytes, unsigned n)
 {
@@ -179,6 +185,46 @@ int main(void)
         printf("FALHA fila: %d eventos, %u descartados\n", count, doom_kbd_get_stats()->dropped);
         failures++;
     }
+
+    /* menu ativo: W S A D e E viram setas e Enter; as outras letras (Y, N, O) ficam */
+    menu_active = 1;
+    doom_kbd_set_menu_hook(menu_hook);
+    FEED(0x1D, 0xF0, 0x1D, 0x1B, 0xF0, 0x1B, 0x1C, 0xF0, 0x1C, 0x23, 0xF0, 0x23, 0x24, 0xF0, 0x24);
+    FEED(0x35, 0xF0, 0x35, 0x31, 0xF0, 0x31, 0x44, 0xF0, 0x44);
+    static const unsigned char menu_keys[] = { KEY_UPARROW, KEY_DOWNARROW, KEY_LEFTARROW, KEY_RIGHTARROW, KEY_ENTER, 'y', 'n', 'o' };
+
+    for (unsigned i = 0; i < sizeof(menu_keys); i++)
+    {
+        expect(1, menu_keys[i], "tecla no menu");
+        expect(0, menu_keys[i], "solta no menu");
+    }
+    expect_empty("menu");
+
+    /* digitacao de texto no menu (nome de save): as letras normais, WASD inclusive */
+    menu_active = 0;
+    FEED(0x1D, 0xF0, 0x1D, 0x1C, 0xF0, 0x1C, 0x1B, 0xF0, 0x1B, 0x23, 0xF0, 0x23, 0x24, 0xF0, 0x24);
+    static const unsigned char text_keys[] = { 'w', 'a', 's', 'd', 'e' };
+
+    for (unsigned i = 0; i < sizeof(text_keys); i++)
+    {
+        expect(1, text_keys[i], "letra no texto");
+        expect(0, text_keys[i], "solta no texto");
+    }
+    expect_empty("texto do save");
+
+    /* o menu abre com a tecla pressionada: a soltura entrega a tecla do make, nada fica preso */
+    FEED(0x1D);
+    menu_active = 1;
+    FEED(0xF0, 0x1D);
+    expect(1, 'w', "w pressionada no jogo");
+    expect(0, 'w', "w solta com o menu aberto");
+    FEED(0x1D);
+    menu_active = 0;
+    FEED(0xF0, 0x1D);
+    expect(1, KEY_UPARROW, "w pressionada no menu");
+    expect(0, KEY_UPARROW, "w solta com o menu fechado");
+    expect_empty("troca de contexto");
+    doom_kbd_set_menu_hook(NULL);
 
     /* registro de eventos */
     char log[64];

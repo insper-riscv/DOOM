@@ -290,8 +290,10 @@ int DG_GetKey(int *pressed, unsigned char *key)
 #if DOOM_TEST_KEYS == 1
         { 600u, { 0x09 }, 1 }, { 610u, { 0xF0, 0x09 }, 2 }, { 700u, { 0x35 }, 1 }, { 710u, { 0xF0, 0x35 }, 2 },
 #else
-        { 300u, { 0x76 }, 1 }, { 305u, { 0xF0, 0x76 }, 2 }, { 330u, { 0x5A }, 1 }, { 335u, { 0xF0, 0x5A }, 2 },
-        { 360u, { 0x5A }, 1 }, { 365u, { 0xF0, 0x5A }, 2 }, { 390u, { 0x5A }, 1 }, { 395u, { 0xF0, 0x5A }, 2 },
+        /* Esc abre o menu; no menu E confirma, S desce e W sobe (New Game, episodio, dificuldade) */
+        { 300u, { 0x76 }, 1 }, { 305u, { 0xF0, 0x76 }, 2 }, { 330u, { 0x24 }, 1 }, { 335u, { 0xF0, 0x24 }, 2 },
+        { 360u, { 0x24 }, 1 }, { 365u, { 0xF0, 0x24 }, 2 }, { 375u, { 0x1B }, 1 }, { 378u, { 0xF0, 0x1B }, 2 },
+        { 382u, { 0x1D }, 1 }, { 385u, { 0xF0, 0x1D }, 2 }, { 390u, { 0x24 }, 1 }, { 395u, { 0xF0, 0x24 }, 2 },
         { 700u, { 0x1D }, 1 }, { 740u, { 0xF0, 0x1D }, 2 },  /* W: frente */
         { 780u, { 0x23 }, 1 }, { 820u, { 0xF0, 0x23 }, 2 },  /* D: desliza para a direita */
         { 860u, { 0xE0, 0x6B }, 2 }, { 900u, { 0xE0, 0xF0, 0x6B }, 3 }, /* seta esquerda: gira */

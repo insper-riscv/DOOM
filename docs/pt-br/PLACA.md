@@ -174,11 +174,14 @@ O decodificador do conjunto 2 (`port/doom_kbd.c`) trata o prefixo `E0`, o `F0` d
 | Espaço, Ctrl esquerdo ou direito | Atirar |
 | Shift | Correr |
 | Alt (com as setas esquerda e direita) | Deslizar de lado |
-| As quatro setas, Enter, Esc | Navegar e escolher nos menus |
+| Nos menus: W, S, A, D e E | Cima, baixo, esquerda (diminui o controle deslizante), direita (aumenta) e confirmar (como o Enter) |
+| Nos menus: as quatro setas, Enter, Esc | Navegar e escolher, como sempre |
+| Nos menus: Y, N e as demais letras | Confirmações e atalhos do DOOM (N, O, L, Q...) sem mudança |
+| Digitando o nome de um save | Todas as letras, WASD e E inclusive |
 | Tab, Backspace, F1 a F12 | Mapa, apagar, as teclas do DOOM |
 | Letras, dígitos, `-`, `=`, vírgula e ponto | ASCII, como os menus (`y` e `n`), os nomes de save e os cheats esperam |
 
-As letras do movimento e do uso, e o espaço do tiro, são o ASCII que o decodificador entrega. O jogo as lê como `key_up`, `key_down`, `key_strafeleft`, `key_straferight`, `key_use` e `key_fire`, trocados em `I_InitInput` (`__wrap_I_InitInput`, depois do `M_LoadDefaults`). Por isso as letras seguem valendo nos menus e na digitação de texto.
+As letras do movimento e do uso, e o espaço do tiro, são o ASCII que o decodificador entrega. O jogo as lê como `key_up`, `key_down`, `key_strafeleft`, `key_straferight`, `key_use` e `key_fire`, trocados em `I_InitInput` (`__wrap_I_InitInput`, depois do `M_LoadDefaults`). Por isso as letras seguem valendo na digitação de texto. O decodificador detecta o menu ativo com `menuactive` (doomstat.h) e a digitação do nome de um save com `saveStringEnter` (m_menu.c): com o menu ativo e sem digitação, W, S, A, D e E viram `KEY_UPARROW`, `KEY_DOWNARROW`, `KEY_LEFTARROW`, `KEY_RIGHTARROW` e `KEY_ENTER` no momento em que a tecla é pressionada, e a soltura entrega a mesma tecla do pressionamento, então abrir ou fechar o menu com a tecla pressionada não deixa nada preso.
 
 O teste do decodificador roda no computador: `gcc -std=gnu17 -Wall -Wextra -Werror -DDOOM_KBD_HOST_TEST -Idoomgeneric/doomgeneric -Iport scripts/test_kbd.c port/doom_kbd.c -o test_kbd && ./test_kbd`.
 

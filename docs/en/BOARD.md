@@ -174,11 +174,14 @@ The set 2 decoder (`port/doom_kbd.c`) handles the `E0` prefix, the `F0` break, t
 | Space, left or right Ctrl | Fire |
 | Shift | Run |
 | Alt (with the left and right arrows) | Strafe |
-| The four arrows, Enter, Esc | Navigate and choose in the menus |
+| In menus: W, S, A, D and E | Up, down, left (lowers a slider), right (raises it) and confirm (like Enter) |
+| In menus: the four arrows, Enter, Esc | Navigate and choose, as usual |
+| In menus: Y, N and the other letters | Confirmations and DOOM shortcuts (N, O, L, Q...) unchanged |
+| Typing a save name | Every letter, WASD and E included |
 | Tab, Backspace, F1 to F12 | Map, erase, the DOOM keys |
 | Letters, digits, `-`, `=`, comma and period | ASCII, as the menus (`y` and `n`), save names and cheats expect |
 
-The movement and use letters, and the space for fire, are the ASCII the decoder delivers. The game reads them as `key_up`, `key_down`, `key_strafeleft`, `key_straferight`, `key_use` and `key_fire`, replaced in `I_InitInput` (`__wrap_I_InitInput`, after `M_LoadDefaults`). That is why the letters keep working in menus and text entry.
+The movement and use letters, and the space for fire, are the ASCII the decoder delivers. The game reads them as `key_up`, `key_down`, `key_strafeleft`, `key_straferight`, `key_use` and `key_fire`, replaced in `I_InitInput` (`__wrap_I_InitInput`, after `M_LoadDefaults`). That is why the letters keep working in text entry. The decoder detects the active menu with `menuactive` (doomstat.h) and save-name typing with `saveStringEnter` (m_menu.c): with the menu active and no typing, W, S, A, D and E become `KEY_UPARROW`, `KEY_DOWNARROW`, `KEY_LEFTARROW`, `KEY_RIGHTARROW` and `KEY_ENTER` when the key is pressed, and the release delivers the same key as the press, so opening or closing the menu with a key held leaves nothing stuck.
 
 The decoder test runs on the computer: `gcc -std=gnu17 -Wall -Wextra -Werror -DDOOM_KBD_HOST_TEST -Idoomgeneric/doomgeneric -Iport scripts/test_kbd.c port/doom_kbd.c -o test_kbd && ./test_kbd`.
 

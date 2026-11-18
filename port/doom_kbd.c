@@ -24,6 +24,9 @@
 
 #include "doomkeys.h"
 #include "doom_kbd.h"
+#ifndef DOOM_KBD_HOST_TEST
+#include "doomstat.h"
+#endif
 
 #ifdef DOOM_VIDEO
 #include "memory_map.h"
@@ -76,8 +79,39 @@ static uint16_t queue[QUEUE_SIZE];
 static uint32_t queue_head;
 static uint32_t queue_tail;
 
-/* Teclas fisicas (codigo e prefixo) hoje pressionadas, um bit por codigo */
-static uint8_t down[2][SET2_SIZE / 8u + 1u];
+/*
+ * Teclas fisicas (codigo e prefixo) hoje pressionadas: guarda a tecla do DOOM que o make entregou (zero se solta), e
+ * a soltura entrega a mesma, mesmo que o menu tenha aberto ou fechado no meio (nenhuma tecla fica presa)
+ */
+static uint8_t emitted[2][SET2_SIZE];
+
+/* Diz se o menu esta ativo e nao em digitacao de texto (WASD e E navegam); NULL ou 0: letras normais */
+static int (*menu_nav_hook)(void);
+
+void doom_kbd_set_menu_hook(int (*hook)(void))
+{
+    menu_nav_hook = hook;
+}
+
+/* No menu, W S A D e E viram as setas e o Enter */
+static uint8_t menu_translate(uint8_t key)
+{
+    switch (key)
+    {
+    case 'w':
+        return KEY_UPARROW;
+    case 's':
+        return KEY_DOWNARROW;
+    case 'a':
+        return KEY_LEFTARROW;
+    case 'd':
+        return KEY_RIGHTARROW;
+    case 'e':
+        return KEY_ENTER;
+    default:
+        return key;
+    }
+}
 
 /* Estado do decodificador */
 static bool seen_ext;
@@ -91,19 +125,6 @@ static struct doom_kbd_stats stats;
 static char log_buf[LOG_SIZE];
 static uint32_t log_len;
 static uint32_t log_lost;
-
-static bool down_get(bool ext, uint8_t code)
-{
-    return (down[ext ? 1u : 0u][code >> 3] >> (code & 7u)) & 1u;
-}
-
-static void down_set(bool ext, uint8_t code, bool value)
-{
-    uint8_t *byte = &down[ext ? 1u : 0u][code >> 3];
-    uint8_t mask = (uint8_t)(1u << (code & 7u));
-
-    *byte = value ? (uint8_t)(*byte | mask) : (uint8_t)(*byte & (uint8_t)~mask);
-}
 
 static void log_event(bool ext, uint8_t code, bool pressed)
 {
@@ -141,18 +162,37 @@ static void queue_push(bool pressed, uint8_t key)
 /* Trata uma tecla completa (codigo com ou sem prefixo, make ou break) */
 static void key_event(bool ext, uint8_t code, bool pressed)
 {
-    uint8_t key = (code < SET2_SIZE) ? (ext ? ext_map[code] : normal_map[code]) : 0u;
+    if (code >= SET2_SIZE)
+    {
+        return;
+    }
+    uint8_t *slot = &emitted[ext ? 1u : 0u][code];
+    uint8_t key;
 
-    if (key == 0u)
+    if (pressed)
     {
-        return;
+        key = ext ? ext_map[code] : normal_map[code];
+        if (key == 0u || *slot != 0u)
+        {
+            /* Tecla sem funcao, ou repeticao de uma ja pressionada */
+            return;
+        }
+        if (menu_nav_hook != NULL && menu_nav_hook() != 0)
+        {
+            key = menu_translate(key);
+        }
+        *slot = key;
     }
-    if (pressed == down_get(ext, code))
+    else
     {
-        /* Repeticao de uma tecla ja pressionada, ou soltura de uma que nao estava */
-        return;
+        key = *slot;
+        if (key == 0u)
+        {
+            /* Soltura de uma tecla que nao estava pressionada */
+            return;
+        }
+        *slot = 0u;
     }
-    down_set(ext, code, pressed);
     queue_push(pressed, key);
     log_event(ext, code, pressed);
     if (pressed)
@@ -210,7 +250,7 @@ void doom_kbd_reset(void)
     {
         for (unsigned code = 0; code < SET2_SIZE; code++)
         {
-            if (down_get(ext != 0u, (uint8_t)code))
+            if (emitted[ext][code] != 0u)
             {
                 key_event(ext != 0u, (uint8_t)code, false);
             }
@@ -287,8 +327,21 @@ extern int key_use;
 extern int key_fire;
 extern void __real_I_InitInput(void);
 
+/* saveStringEnter (m_menu.c) vale 1 enquanto se digita o nome do save; menuactive vem do doomstat.h */
+extern int saveStringEnter;
+
+/*
+ * Nos menus W S A D e E navegam como as setas e o Enter (menu_translate), exceto na digitacao do nome de um save,
+ * onde sao letras. As confirmacoes Y e N e os atalhos de letra dos menus (N, O, L, Q...) nao mudam.
+ */
+static int menu_nav_active(void)
+{
+    return menuactive != 0 && saveStringEnter == 0;
+}
+
 void __wrap_I_InitInput(void)
 {
+    doom_kbd_set_menu_hook(menu_nav_active);
     key_up = 'w';
     key_down = 's';
     key_strafeleft = 'a';
