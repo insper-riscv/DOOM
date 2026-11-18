@@ -139,3 +139,50 @@ uv run --no-project scripts/measure_report.py build-board/meas.mif
 ```
 
 On Spike (`TARGET=layout MEASURE=1`) the CRC-32 of the last frame stays `67371a4f` and the instructions per frame stay 3,147,534.
+
+## 12. Indexed video and PS/2 keyboard
+
+With `VIDEO=1` at build time (`layout` and `board` targets), doomgeneric is built with `CMAP256`: the game delivers 320x200 palette index bytes, the native DOOM format, instead of 32-bit XRGB. The `board` target then drives the `VIDEO` peripheral (window at `0x80100000`) and the `KBD` (`0x80007000`) of the `doom` platform, and the `layout` target only computes the CRC-32 of the frames, so Spike serves as the reference.
+
+| Variable | Default | Meaning |
+| :--- | :--- | :--- |
+| `VIDEO` | 0 | 1 enables the indexed framebuffer and, on the `board` target, the VIDEO and the KBD |
+| `INTERACTIVE` | 0 | 1 runs `doom -iwad doom1.wad` (title, menu, game and attract demo) instead of `-timedemo demo1` |
+| `VSYNC` | 1 | 0 removes the wait for the start of the vertical blanking before writing the frame (with `MEASURE=1` the default is 0) |
+| `VCRC_FRAMES` | 32 | How many initial frames keep the CRC-32 of the indexes and of the palette (with `MEASURE=1` the default is 0) |
+
+### 12.1. Video
+
+| Item | Value |
+| :--- | :--- |
+| Frame | `DG_DrawFrame` copies the 16,000 words of `DG_ScreenBuffer` to `0x80120000` with word stores, four pixels each, with no read before the write |
+| Palette | 256 words at `0x80100400`, RGB444 with the high 4 bits of each 8-bit channel, written only when DOOM calls `I_SetPalette` (`palette_changed`) |
+| Synchronization | The frame is written only after the VIDEO frame counter (`+8`) changes, that is, at the start of the vertical blanking; the write is faster than the scan-out and does not tear the image |
+| Enable | The control register (`+0`) receives 1 after the first frame |
+
+### 12.2. Keyboard
+
+The set 2 decoder (`port/doom_kbd.c`) handles the `E0` prefix, the `F0` break, typematic repeat (an already pressed key raises no new event) and drops `00`, `FA`, `AA`, `FE` and `FF`. Events enter a 64-entry queue and `DG_GetKey` polls the KBD at each call. An overflow of the 16-byte KBD queue releases all keys.
+
+| Key | Game action |
+| :--- | :--- |
+| Arrows | Move forward and back (up and down) and turn the camera (left and right) |
+| Left or right Ctrl | Fire |
+| Space | Use, open doors and switches |
+| Shift | Run |
+| Alt (with the left and right arrows) | Strafe |
+| Comma and period | Strafe left and right |
+| Enter, Esc, Tab, Backspace, F1 to F12 | Choose and go back in the menus, map, erase, the DOOM keys |
+| Letters and digits, `-` and `=` | Lowercase ASCII, as the menus (`y` and `n`), save names and cheats expect |
+
+The decoder test runs on the computer: `gcc -std=gnu17 -Wall -Wextra -Werror -DDOOM_KBD_HOST_TEST -Idoomgeneric/doomgeneric -Iport scripts/test_kbd.c port/doom_kbd.c -o test_kbd && ./test_kbd`.
+
+### 12.3. Monitoring over the JTAG UART
+
+Every 5 s the game prints a line with the frames per second of the window, the total frames, how many times the palette was written, the keys pressed and released and the log of the events received (`+75e` is the up arrow pressed, `-75e` released, `e` marks the extended prefix), and a second one with the CRC-32 of the indexes of frames 1, 2, 4, 8, 16 and 32 and that of the palette.
+
+The same content stays in SDRAM, in the statistics block of `scripts/layout.sh` (`VSTAT_ADDR`, `0x43FFF100`, `dump-ram` word 16776256, with the header and the CRC pairs described in `port/doom_video.h`), for whoever reads without an open console.
+
+### 12.4. Spike reference
+
+On Spike (`TARGET=layout VIDEO=1`), the CRC-32 of the last frame of `-timedemo demo1` over the 64,000 indexes is `7b28220e`, with 5065 frames and 1,682,248 instructions per frame (against 3,147,534 for XRGB). With `INTERACTIVE=1` the first 32 frames are the title screen, with CRC-32 `b6290c41` and palette `bc869b57`, and the board must print the same values.

@@ -39,7 +39,12 @@
 
 /* Argumentos do DOOM; -timedemo roda a demo sem relogio de parede */
 #ifndef DOOM_ARGS
+#ifdef DOOM_INTERACTIVE
+/* Modo interativo (INTERACTIVE=1 no build.sh): titulo, menu e jogo, com o demo de atracao */
+#define DOOM_ARGS "doom", "-iwad", "doom1.wad"
+#else
 #define DOOM_ARGS "doom", "-iwad", "doom1.wad", "-timedemo", "demo1"
+#endif
 #endif
 
 #ifdef DOOM_CONSOLE_UART

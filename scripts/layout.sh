@@ -21,6 +21,10 @@ RESULT_ADDR=0x43FFF000
 # Bloco de medicao de CPI (MEASURE=1 no build.sh): 64 B de cabecalho e 64 instantaneos de 64 B,
 # de 0x43000000 a 0x43001040 (SDRAM comum, atras da cache de dados de escrita direta; cabe os 64 instantaneos)
 MEASURE_ADDR=0x43000000
+# Bloco de estatisticas do video indexado (VIDEO=1): 16 palavras de cabecalho e, de 0x43FFF140, o par
+# (CRC dos indices, CRC da paleta) dos primeiros quadros; 0x43FFF100 a 0x43FFF240 (port/doom_video.h), na
+# ultima pagina, acima do resultado (0x43FFF000, 64 B) e abaixo do stdout da plataforma (0x43FFFBE0)
+VSTAT_ADDR=0x43FFF100
 # Termina onde comeca a ultima pagina da SDRAM (0x43FFF000): o topo da pilha
 BOARD_RAM_LENGTH=0x3FFF000
 # Palavra da campainha (platform.yaml, reserved.launch) e magia do carregador

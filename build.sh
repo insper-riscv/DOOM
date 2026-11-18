@@ -91,6 +91,38 @@ if [ "${MEASURE:-0}" = 1 ]; then
     PORT_DEFS="$PORT_DEFS -DDOOM_MEASURE_STOP=$MEASURE_STOP"
   fi
 fi
+# Video indexado (VIDEO=1, so nos alvos layout e board): a doomgeneric entrega 320x200 bytes de indice e a
+# paleta (CMAP256), sem a conversao para XRGB de 32 bits. No board, o quadro vai para a janela do VIDEO e o
+# teclado PS/2 e lido do KBD (DOOM_VIDEO); no layout (Spike) so ficam o CRC dos indices e as estatisticas.
+# VSYNC=0 tira a espera pelo apagamento vertical, VCRC_FRAMES=N muda quantos quadros guardam o CRC (padrao 32);
+# com MEASURE=1 os dois valem 0 (a medicao de CPI nao pode incluir espera nem CRC), salvo se definidos.
+# INTERACTIVE=1: titulo, menu e jogo (sem -timedemo), com o demo de atracao do DOOM
+DOOM_SRC_PORT="doom_platform doom_runtime doom_wad_mem"
+if [ "${VIDEO:-0}" = 1 ]; then
+  if [ "$TARGET" = spike ]; then
+    echo "VIDEO=1 pede TARGET=layout ou board (o mapa da SDRAM)" >&2
+    exit 1
+  fi
+  DEFS="$DEFS -DCMAP256"
+  PORT_DEFS="$PORT_DEFS -DDOOM_VSTAT_ADDR=$VSTAT_ADDR"
+  DOOM_SRC_PORT="$DOOM_SRC_PORT doom_kbd doom_video"
+  if [ "$TARGET" = board ]; then
+    PORT_DEFS="$PORT_DEFS -DDOOM_VIDEO"
+  fi
+  if [ "${MEASURE:-0}" = 1 ]; then
+    VSYNC=${VSYNC:-0}
+    VCRC_FRAMES=${VCRC_FRAMES:-0}
+  fi
+  if [ "${VSYNC:-1}" = 0 ]; then
+    PORT_DEFS="$PORT_DEFS -DDOOM_VIDEO_NOVSYNC"
+  fi
+  if [ -n "${VCRC_FRAMES:-}" ]; then
+    PORT_DEFS="$PORT_DEFS -DDOOM_VCRC_FRAMES=${VCRC_FRAMES}u"
+  fi
+fi
+if [ "${INTERACTIVE:-0}" = 1 ]; then
+  PORT_DEFS="$PORT_DEFS -DDOOM_INTERACTIVE"
+fi
 # Codigo da doomgeneric e C89/C99 de terceiros: sem os avisos do projeto
 GAME_FLAGS="-std=gnu99 -w -fcommon -ffunction-sections"
 
@@ -100,7 +132,7 @@ for f in $SRC; do
 done
 
 # Codigo da porta: com os avisos estritos do projeto
-for f in doom_platform doom_runtime doom_wad_mem; do
+for f in $DOOM_SRC_PORT; do
   $CC --specs=picolibc.specs $ARCH $OPT -std=gnu23 -Wall -Wextra -Werror $DEFS $PORT_DEFS \
     -I"$DG" -Iport -c "port/$f.c" -o "$OUT/obj/$f.o"
 done

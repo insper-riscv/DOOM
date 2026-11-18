@@ -20,6 +20,10 @@
 
 #include "doomgeneric.h"
 #include "doom_platform.h"
+#ifdef CMAP256
+#include "doom_kbd.h"
+#include "doom_video.h"
+#endif
 
 /*
  * Ticks do CSR `time` por milissegundo. O `time` do Spike avanca 1 tick a
@@ -238,10 +242,16 @@ uint32_t DG_GetTicksMs(void)
 
 int DG_GetKey(int *pressed, unsigned char *key)
 {
+#ifdef DOOM_VIDEO
+    /* Teclado PS/2 do KBD: le os bytes pendentes e entrega um evento da fila por chamada */
+    doom_kbd_poll();
+    return doom_kbd_pop(pressed, key);
+#else
     /* Sem teclado: nenhum evento pendente */
     (void)pressed;
     (void)key;
     return 0;
+#endif
 }
 
 void DG_SetWindowTitle(const char *title)
@@ -267,12 +277,17 @@ void DG_DrawFrame(void)
     }
     instret_last_frame = doom_read_instret();
     frames_drawn++;
+#ifdef CMAP256
+    /* Quadro indexado: paleta e indices para o VIDEO (placa), CRC-32 dos primeiros quadros e fps */
+    doom_video_frame(frames_drawn);
+#else
     /* Progresso a cada 100 quadros, para acompanhar a execucao longa no Spike */
     if (frames_drawn % 100u == 0)
     {
         printf("frame %lu instret %llu\n", (unsigned long)frames_drawn,
                (unsigned long long)instret_last_frame);
     }
+#endif
 }
 
 uint32_t doom_frames_drawn(void)

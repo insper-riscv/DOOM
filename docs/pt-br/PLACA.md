@@ -139,3 +139,50 @@ uv run --no-project scripts/measure_report.py build-board/meas.mif
 ```
 
 No Spike (`TARGET=layout MEASURE=1`) o CRC-32 do ultimo quadro continua `67371a4f` e as instrucoes por quadro continuam 3.147.534.
+
+## 12. Vídeo indexado e teclado PS/2
+
+Com `VIDEO=1` no build (alvos `layout` e `board`), a doomgeneric é compilada com `CMAP256`: o jogo entrega 320x200 bytes de índice de paleta, o formato nativo do DOOM, em vez do XRGB de 32 bits. O alvo `board` liga então o periférico `VIDEO` (janela em `0x80100000`) e o `KBD` (`0x80007000`) da plataforma `doom`, e o alvo `layout` só calcula o CRC-32 dos quadros, para o Spike servir de gabarito.
+
+| Variável | Padrão | Significado |
+| :--- | :--- | :--- |
+| `VIDEO` | 0 | 1 liga o framebuffer indexado e, no alvo `board`, o VIDEO e o KBD |
+| `INTERACTIVE` | 0 | 1 executa `doom -iwad doom1.wad` (título, menu, jogo e demo de atração) em vez do `-timedemo demo1` |
+| `VSYNC` | 1 | 0 tira a espera pelo início do apagamento vertical antes de escrever o quadro (com `MEASURE=1` o padrão é 0) |
+| `VCRC_FRAMES` | 32 | Quantos quadros iniciais guardam o CRC-32 dos índices e da paleta (com `MEASURE=1` o padrão é 0) |
+
+### 12.1. Vídeo
+
+| Item | Valor |
+| :--- | :--- |
+| Quadro | `DG_DrawFrame` copia as 16.000 palavras de `DG_ScreenBuffer` para `0x80120000` com stores de palavra, quatro pixels cada, sem leitura antes da escrita |
+| Paleta | 256 palavras em `0x80100400`, RGB444 com os 4 bits altos de cada canal de 8 bits, escritas só quando o DOOM chama `I_SetPalette` (`palette_changed`) |
+| Sincronismo | O quadro só é escrito depois que o contador de quadros do VIDEO (`+8`) muda, isto é, no início do apagamento vertical; a escrita anda mais rápido que a varredura e não rasga a imagem |
+| Ligar | O registrador de controle (`+0`) recebe 1 depois do primeiro quadro |
+
+### 12.2. Teclado
+
+O decodificador do conjunto 2 (`port/doom_kbd.c`) trata o prefixo `E0`, o `F0` de soltura, a repetição automática (uma tecla já pressionada não gera novo evento) e descarta `00`, `FA`, `AA`, `FE` e `FF`. Os eventos entram numa fila de 64 posições e `DG_GetKey` lê o KBD por sondagem a cada chamada. Um estouro da fila de 16 bytes do KBD solta todas as teclas.
+
+| Tecla | Ação no jogo |
+| :--- | :--- |
+| Setas | Andar para a frente e para trás (cima e baixo) e girar a câmera (esquerda e direita) |
+| Ctrl esquerdo ou direito | Atirar |
+| Espaço | Usar, abrir portas e interruptores |
+| Shift | Correr |
+| Alt (com as setas esquerda e direita) | Deslizar de lado |
+| Vírgula e ponto | Deslizar para a esquerda e para a direita |
+| Enter, Esc, Tab, Backspace, F1 a F12 | Escolher e voltar nos menus, mapa, apagar, as teclas do DOOM |
+| Letras e dígitos, `-` e `=` | ASCII em minúsculas, como os menus (`y` e `n`), os nomes de save e os cheats esperam |
+
+O teste do decodificador roda no computador: `gcc -std=gnu17 -Wall -Wextra -Werror -DDOOM_KBD_HOST_TEST -Idoomgeneric/doomgeneric -Iport scripts/test_kbd.c port/doom_kbd.c -o test_kbd && ./test_kbd`.
+
+### 12.3. Acompanhamento pela JTAG UART
+
+A cada 5 s o jogo imprime uma linha com os quadros por segundo da janela, o total de quadros, quantas vezes a paleta foi escrita, as teclas pressionadas e soltas e o registro dos eventos recebidos (`+75e` é a seta para cima pressionada, `-75e` solta, `e` marca o prefixo estendido), e uma segunda com o CRC-32 dos índices dos quadros 1, 2, 4, 8, 16 e 32 e o da paleta.
+
+O mesmo conteúdo fica na SDRAM, no bloco de estatísticas de `scripts/layout.sh` (`VSTAT_ADDR`, `0x43FFF100`, palavra 16776256 do `dump-ram`, com o cabeçalho e os pares de CRC descritos em `port/doom_video.h`), para quem lê sem console aberto.
+
+### 12.4. Gabarito do Spike
+
+No Spike (`TARGET=layout VIDEO=1`), o CRC-32 do último quadro do `-timedemo demo1` com os 64.000 índices é `7b28220e`, com 5065 quadros e 1.682.248 instruções por quadro (contra 3.147.534 do XRGB). Com `INTERACTIVE=1` os 32 primeiros quadros são a tela de título, de CRC-32 `b6290c41` e paleta `bc869b57`, e a placa deve imprimir os mesmos valores.
