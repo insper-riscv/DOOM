@@ -22,6 +22,6 @@ run_in_container() {
   fi
   exec docker run --rm --user "$(id -u):$(id -g)" -e HOME=/w/.home \
     -e DOOM_IN_CONTAINER=1 -e OPT -e OUT -e RAM_ORIGIN -e RAM_LENGTH -e TARGET -e PLATFORM_DIR -e MEASURE -e MEASURE_STOP \
-    -e VIDEO -e INTERACTIVE -e VSYNC -e VCRC_FRAMES -e EXPECTED_CRC32 \
+    -e VIDEO -e INTERACTIVE -e TESTKEYS -e VSYNC -e VCRC_FRAMES -e EXPECTED_CRC32 \
     -v "$PWD":/w -w /w "$DEV_TOOLS_IMAGE" sh "/w/$script" "$@"
 }

@@ -121,7 +121,17 @@ if [ "${VIDEO:-0}" = 1 ]; then
   fi
 fi
 if [ "${INTERACTIVE:-0}" = 1 ]; then
-  PORT_DEFS="$PORT_DEFS -DDOOM_INTERACTIVE"
+  # No modo interativo o Quit Game e o fim por erro reiniciam o programa (port/doom_runtime.c), com o .data
+  # guardado em DOOM_DATA_BACKUP_ADDR
+  PORT_DEFS="$PORT_DEFS -DDOOM_INTERACTIVE -DDOOM_DATA_BACKUP_ADDR=$DATA_BACKUP_ADDR"
+fi
+# TESTKEYS=1 (so no alvo layout, no Spike): injeta F10 e Y (Quit Game) para testar o reinicio sem teclado
+if [ "${TESTKEYS:-0}" = 1 ]; then
+  if [ "$TARGET" != layout ]; then
+    echo "TESTKEYS=1 pede TARGET=layout" >&2
+    exit 1
+  fi
+  PORT_DEFS="$PORT_DEFS -DDOOM_TEST_KEYS"
 fi
 # Codigo da doomgeneric e C89/C99 de terceiros: sem os avisos do projeto
 GAME_FLAGS="-std=gnu99 -w -fcommon -ffunction-sections"
@@ -159,7 +169,7 @@ fi
 # shellcheck disable=SC2086
 $CC --specs=picolibc.specs $ARCH $OPT -T port/link.ld \
   -Wl,--defsym=RAM_ORIGIN="$RAM_ORIGIN" -Wl,--defsym=RAM_LENGTH="$RAM_LENGTH" $LINK_DEFS \
-  -Wl,--wrap=M_FileExists -Wl,--gc-sections -Wl,-Map="$OUT/doom.map" \
+  -Wl,--wrap=M_FileExists -Wl,--wrap=I_Quit -Wl,--gc-sections -Wl,-Map="$OUT/doom.map" \
   "$OUT"/obj/*.o -lm -o "$OUT/doom.elf"
 
 riscv32-unknown-elf-size -A "$OUT/doom.elf"

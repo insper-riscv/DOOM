@@ -186,3 +186,14 @@ O mesmo conteúdo fica na SDRAM, no bloco de estatísticas de `scripts/layout.sh
 ### 12.4. Gabarito do Spike
 
 No Spike (`TARGET=layout VIDEO=1`), o CRC-32 do último quadro do `-timedemo demo1` com os 64.000 índices é `7b28220e`, com 5065 quadros e 1.682.248 instruções por quadro (contra 3.147.534 do XRGB). Com `INTERACTIVE=1` os 32 primeiros quadros são a tela de título, de CRC-32 `b6290c41` e paleta `bc869b57`, e a placa deve imprimir os mesmos valores.
+
+### 12.5. Reinício do jogo
+
+Com `INTERACTIVE=1` o programa tem um reinício limpo: restaura o `.data` a partir da cópia tirada no início do `main` (`DOOM_DATA_BACKUP_ADDR`, `0x43800000`) e salta para o `_start`, que zera o bss e chama o `main` de novo. A WAD e o binário já estão na SDRAM e nada é recarregado. Dois caminhos levam a ele.
+
+| Causa | Mensagem na UART |
+| :--- | :--- |
+| Quit Game do menu (o `I_Quit` é envolvido por `--wrap`, porque o original volta ao jogo sobre o vídeo já liberado) | `[DOOM] Quit Game: reiniciando o jogo (titulo e menu)` |
+| Fim do programa por erro (`I_Error`, `exit`), depois de 3 s | `[DOOM] fim do programa (codigo N): reiniciando em 3 s` |
+
+No Spike, `TESTKEYS=1 VIDEO=1 INTERACTIVE=1 TARGET=layout` injeta F10 e Y (Quit Game) nos quadros 600 e 700 para testar o reinício sem teclado.

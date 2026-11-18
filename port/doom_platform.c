@@ -20,6 +20,9 @@
 
 #include "doomgeneric.h"
 #include "doom_platform.h"
+#ifdef DOOM_TEST_KEYS
+#include "doomkeys.h"
+#endif
 #ifdef CMAP256
 #include "doom_kbd.h"
 #include "doom_video.h"
@@ -246,6 +249,26 @@ int DG_GetKey(int *pressed, unsigned char *key)
     /* Teclado PS/2 do KBD: le os bytes pendentes e entrega um evento da fila por chamada */
     doom_kbd_poll();
     return doom_kbd_pop(pressed, key);
+#elif defined(DOOM_TEST_KEYS)
+    /* Teste no Spike (TESTKEYS=1): Quit Game pelo F10 e Y, por quadros entregues */
+    static const struct
+    {
+        uint32_t frame;
+        int pressed;
+        unsigned char key;
+    } script[] = {
+        { 600u, 1, KEY_F10 }, { 610u, 0, KEY_F10 }, { 700u, 1, 'y' }, { 710u, 0, 'y' },
+    };
+    static unsigned pos;
+
+    if (pos < sizeof(script) / sizeof(script[0]) && frames_drawn >= script[pos].frame)
+    {
+        *pressed = script[pos].pressed;
+        *key = script[pos].key;
+        pos++;
+        return 1;
+    }
+    return 0;
 #else
     /* Sem teclado: nenhum evento pendente */
     (void)pressed;

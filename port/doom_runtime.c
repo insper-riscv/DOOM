@@ -116,7 +116,7 @@ static void htif_write(int fd, const char *buf, size_t len)
 }
 
 /* Termina a simulacao com o codigo dado (bit 0 de tohost marca o exit) */
-[[noreturn]] static void htif_exit(int code)
+[[noreturn, maybe_unused]] static void htif_exit(int code)
 {
     tohost = ((uint64_t)(uint32_t)code << 1) | 1u;
     for (;;)
@@ -240,6 +240,82 @@ static void print_summary(int code, uint32_t crc, uint32_t frames, uint64_t inst
     console_flush();
 }
 
+#ifdef DOOM_INTERACTIVE
+
+/*
+ * Reinicio limpo do programa (modo interativo). O I_Quit da doomgeneric sem ORIGCODE roda as funcoes de
+ * encerramento (libera o buffer de video, para o som) e VOLTA, o que deixa o jogo rodando sobre estado destruido; e
+ * o exit() de um I_Error caia no laco de resumo. Nos dois casos o programa volta ao inicio: restaura o .data, que o
+ * jogo foi alterando (o endereco de carga e o de execucao sao o mesmo, entao nao ha copia pristina na imagem) a
+ * partir da copia tirada no inicio do main, e salta para o _start, que zera o bss, refaz o TLS e chama o main. A
+ * WAD e o binario ja estao na SDRAM, nada e recarregado; o VIDEO e o KBD seguem ligados e mostram o ultimo quadro
+ * ate o primeiro quadro novo.
+ */
+extern char __data_start[];
+extern char __data_end[];
+extern void _start(void);
+
+/* Copia do .data na SDRAM livre (DOOM_DATA_BACKUP_ADDR, scripts/layout.sh) */
+#define DATA_BACKUP ((volatile uint32_t *)(uintptr_t)DOOM_DATA_BACKUP_ADDR)
+
+/* Guarda o .data inicial; chamada no inicio do main, antes de o jogo o alterar */
+static void data_snapshot(void)
+{
+    const volatile uint32_t *src = (const volatile uint32_t *)(uintptr_t)__data_start;
+    uint32_t words = (uint32_t)((uintptr_t)__data_end - (uintptr_t)__data_start) / 4u;
+
+    for (uint32_t i = 0; i < words; i++)
+    {
+        DATA_BACKUP[i] = src[i];
+    }
+}
+
+/* Espera ms milissegundos pelo relogio do jogo */
+static void wait_ms(uint32_t ms)
+{
+    uint32_t start = DG_GetTicksMs();
+
+    while ((uint32_t)(DG_GetTicksMs() - start) < ms)
+    {
+    }
+}
+
+/* Restaura o .data e salta para o _start; nenhuma chamada de biblioteca depois da restauracao */
+[[noreturn]] static void restart_program(void)
+{
+    volatile uint32_t *dst = (volatile uint32_t *)(uintptr_t)__data_start;
+    uint32_t words = (uint32_t)((uintptr_t)__data_end - (uintptr_t)__data_start) / 4u;
+
+    for (uint32_t i = 0; i < words; i++)
+    {
+        dst[i] = DATA_BACKUP[i];
+    }
+    _start();
+    for (;;)
+    {
+    }
+}
+
+/* Quit Game do menu: o jogo recomeca na tela de titulo, sem recarregar nada */
+void __wrap_I_Quit(void)
+{
+    printf("[DOOM] Quit Game: reiniciando o jogo (titulo e menu)\n");
+    console_flush();
+    restart_program();
+}
+
+#else
+
+/* Sem modo interativo o I_Quit e o original */
+extern void __real_I_Quit(void);
+
+void __wrap_I_Quit(void)
+{
+    __real_I_Quit();
+}
+
+#endif
+
 /* Encerra gravando o resultado e imprimindo o resumo */
 void _exit(int code)
 {
@@ -252,7 +328,13 @@ void _exit(int code)
 
     result_write(code, crc, frames, instret, per_frame);
     print_summary(code, crc, frames, instret, per_frame);
-#ifdef DOOM_CONSOLE_UART
+#ifdef DOOM_INTERACTIVE
+    /* Fim por I_Error ou exit: deixa 3 s para ler a mensagem na UART e recomeca o jogo */
+    printf("[DOOM] fim do programa (codigo %d): reiniciando em 3 s\n", code);
+    console_flush();
+    wait_ms(3000u);
+    restart_program();
+#elif defined(DOOM_CONSOLE_UART)
     /* Fica repetindo o resumo a cada 2 s, para um console aberto depois o ver */
     for (;;)
     {
@@ -272,6 +354,9 @@ int main(void)
 {
     static char *args[] = { DOOM_ARGS };
 
+#ifdef DOOM_INTERACTIVE
+    data_snapshot();
+#endif
     result_clear();
     doom_measure_init();
     doomgeneric_Create((int)(sizeof(args) / sizeof(args[0])), args);

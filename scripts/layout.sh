@@ -25,6 +25,9 @@ MEASURE_ADDR=0x43000000
 # (CRC dos indices, CRC da paleta) dos primeiros quadros; 0x43FFF100 a 0x43FFF240 (port/doom_video.h), na
 # ultima pagina, acima do resultado (0x43FFF000, 64 B) e abaixo do stdout da plataforma (0x43FFFBE0)
 VSTAT_ADDR=0x43FFF100
+# Copia do .data (cerca de 60 KB) que o modo interativo restaura ao reiniciar o programa; SDRAM livre, longe do
+# heap (que cresce de HEAP_START) e da pilha (que desce de 0x43FFF000)
+DATA_BACKUP_ADDR=0x43800000
 # Termina onde comeca a ultima pagina da SDRAM (0x43FFF000): o topo da pilha
 BOARD_RAM_LENGTH=0x3FFF000
 # Palavra da campainha (platform.yaml, reserved.launch) e magia do carregador
