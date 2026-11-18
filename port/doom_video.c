@@ -24,6 +24,7 @@
 
 #include "doomgeneric.h"
 #include "i_video.h"
+#include "doomstat.h"
 
 #include "doom_kbd.h"
 #include "doom_video.h"
@@ -172,9 +173,11 @@ static void report(uint32_t frame, uint32_t ms, uint32_t *last_ms, uint32_t *las
     uint32_t df = frame - *last_frame;
     uint32_t fps100 = (dt != 0u) ? (uint32_t)(((uint64_t)df * 100000u) / dt) : 0u;
 
-    printf("[DOOM t=%lus] fps=%lu.%02lu quadros=%lu paletas=%lu teclas: +%lu -%lu perdas=%lu eventos=[%s]%s\n",
+    /* Estado do jogo: gs 3 e a tela de titulo (GS_DEMOSCREEN), gs 0 com demo=1 e o demo de atracao, gs 0 com demo=0 e o jogo */
+    printf("[DOOM t=%lus] fps=%lu.%02lu quadros=%lu gs=%d demo=%d gametic=%d paletas=%lu teclas: +%lu -%lu perdas=%lu eventos=[%s]%s\n",
            (unsigned long)(ms / 1000u), (unsigned long)(fps100 / 100u), (unsigned long)(fps100 % 100u),
-           (unsigned long)frame, (unsigned long)palette_writes, (unsigned long)k->pressed,
+           (unsigned long)frame, (int)gamestate, (int)demoplayback, (int)gametic,
+           (unsigned long)palette_writes, (unsigned long)k->pressed,
            (unsigned long)k->released, (unsigned long)(k->overflows + k->errors + k->dropped), events,
            lost != 0u ? " (+mais)" : "");
     uint32_t captured = VSTAT[DOOM_VST_CAPTURED];
