@@ -115,6 +115,11 @@ if [ "${VIDEO:-0}" = 1 ]; then
     VSYNC=${VSYNC:-0}
     VCRC_FRAMES=${VCRC_FRAMES:-0}
   fi
+  # PROFILE=1: kciclos e kinstrucoes por quadro por regiao na linha [PERFIL] de 5 s (port/doom_video.c)
+  if [ "${PROFILE:-0}" = 1 ]; then
+    PORT_DEFS="$PORT_DEFS -DDOOM_PROFILE"
+    LINK_DEFS="$LINK_DEFS -Wl,--wrap=I_FinishUpdate"
+  fi
   if [ "${VSYNC:-1}" = 0 ]; then
     PORT_DEFS="$PORT_DEFS -DDOOM_VIDEO_NOVSYNC"
   fi

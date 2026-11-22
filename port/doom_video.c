@@ -27,6 +27,7 @@
 #include "doomstat.h"
 
 #include "doom_kbd.h"
+#include "doom_platform.h"
 #include "doom_video.h"
 
 #ifdef DOOM_VIDEO
@@ -163,6 +164,34 @@ static void frame_write(const uint32_t *src)
 
 #endif /* DOOM_VIDEO */
 
+#ifdef DOOM_PROFILE
+/*
+ * Perfil por regiao (PROFILE=1 no build.sh), em ciclos do CSR cycle, somados por janela de DOOM_REPORT_MS e impressos
+ * como media por quadro. periodo: entre duas entradas de doom_video_frame (o quadro todo); copia: o memcpy do
+ * I_FinishUpdate (da entrada do I_FinishUpdate, envolvido por --wrap, ate a entrada de doom_video_frame); prep:
+ * paleta, CRC e teclado antes da escrita; vsync: espera do apagamento vertical; escrita: paleta e 64000 bytes ao
+ * VIDEO; o resto do periodo (jogo e renderizacao) e periodo menos as quatro.
+ */
+uint64_t doom_prof_fb_t0;
+static uint64_t pf_last_entry;
+static uint64_t pf_period;
+static uint64_t pf_copy;
+static uint64_t pf_prep;
+static uint64_t pf_vsync;
+static uint64_t pf_write;
+static uint64_t pf_instret;
+static uint64_t pf_last_instret;
+static uint32_t pf_frames;
+
+extern void __real_I_FinishUpdate(void);
+
+void __wrap_I_FinishUpdate(void)
+{
+    doom_prof_fb_t0 = doom_read_cycle();
+    __real_I_FinishUpdate();
+}
+#endif
+
 /* Linha de acompanhamento da JTAG UART, a cada DOOM_REPORT_MS */
 static void report(uint32_t frame, uint32_t ms, uint32_t *last_ms, uint32_t *last_frame)
 {
@@ -197,6 +226,21 @@ static void report(uint32_t frame, uint32_t ms, uint32_t *last_ms, uint32_t *las
         }
         printf(" pal1=%08lx\n", (unsigned long)VSTAT[DOOM_VST_HEAD_WORDS + 1u]);
     }
+#ifdef DOOM_PROFILE
+    if (pf_frames != 0u)
+    {
+        uint64_t n = pf_frames;
+        uint64_t rest = pf_period - pf_copy - pf_prep - pf_vsync - pf_write;
+
+        printf("[PERFIL] kciclos por quadro: periodo=%lu copia=%lu prep=%lu vsync=%lu escrita=%lu resto=%lu; kinstr por quadro=%lu\n",
+               (unsigned long)(pf_period / n / 1000u), (unsigned long)(pf_copy / n / 1000u),
+               (unsigned long)(pf_prep / n / 1000u), (unsigned long)(pf_vsync / n / 1000u),
+               (unsigned long)(pf_write / n / 1000u), (unsigned long)(rest / n / 1000u),
+               (unsigned long)(pf_instret / n / 1000u));
+    }
+    pf_period = pf_copy = pf_prep = pf_vsync = pf_write = pf_instret = 0u;
+    pf_frames = 0u;
+#endif
     VSTAT[DOOM_VST_FPS_X100] = fps100;
     *last_ms = ms;
     *last_frame = frame;
@@ -206,6 +250,12 @@ void doom_video_frame(uint32_t frame)
 {
     static uint32_t report_ms;
     static uint32_t report_frame;
+#ifdef DOOM_PROFILE
+    uint64_t pc0 = doom_read_cycle();
+    uint64_t pc1 = 0u;
+    uint64_t pc2 = 0u;
+    uint64_t pc3 = 0u;
+#endif
     uint32_t ms = DG_GetTicksMs();
     bool new_palette = (palette_changed != 0) || (frame == 1u);
 
@@ -232,16 +282,25 @@ void doom_video_frame(uint32_t frame)
         VSTAT[DOOM_VST_CAPTURED] = frame;
     }
 
+#ifdef DOOM_PROFILE
+    pc1 = doom_read_cycle();
+#endif
 #ifdef DOOM_VIDEO
     doom_kbd_poll();
 #ifndef DOOM_VIDEO_NOVSYNC
     wait_vblank();
+#endif
+#ifdef DOOM_PROFILE
+    pc2 = doom_read_cycle();
 #endif
     if (new_palette)
     {
         palette_write();
     }
     frame_write((const uint32_t *)DG_ScreenBuffer);
+#ifdef DOOM_PROFILE
+    pc3 = doom_read_cycle();
+#endif
     if (frame == 1u)
     {
         VID_CONTROL = 1u;
@@ -270,6 +329,23 @@ void doom_video_frame(uint32_t frame)
     {
         doom_restart_idle(ms - idle_since);
     }
+#endif
+
+#ifdef DOOM_PROFILE
+    if (frame > 1u)
+    {
+        uint64_t ins = doom_read_instret();
+
+        pf_period += pc0 - pf_last_entry;
+        pf_copy += pc0 - doom_prof_fb_t0;
+        pf_prep += pc1 - pc0;
+        pf_vsync += pc2 - pc1;
+        pf_write += pc3 - pc2;
+        pf_instret += ins - pf_last_instret;
+        pf_frames++;
+    }
+    pf_last_entry = pc0;
+    pf_last_instret = doom_read_instret();
 #endif
 
     if (frame == 1u)
