@@ -11,10 +11,10 @@ Só código escrito para este projeto, sob Apache 2.0.
 | Item | Função |
 | :--- | :--- |
 | `fetch.sh` | Baixa a `doomgeneric` em um commit fixado e o WAD shareware, e confere o SHA-256 de cada um |
-| `build.sh` | Compila a porta para `rv32im` com `ilp32` no container `dev_tools` |
+| `build.sh` | Compila a porta para `rv32im` com `ilp32` no container `dev_tools`, nos alvos `spike`, `layout` e `board` |
 | `run.sh` | Executa o `-timedemo demo1` no Spike e confere o CRC-32 do último quadro |
 | `port/` | Camada de plataforma (`DG_*`), backend de WAD em memória, runtime e linker script |
-| `scripts/` | Funções comuns dos scripts |
+| `scripts/` | Funções comuns, o mapa da SDRAM (`layout.sh`), a imagem da placa (`image.sh`), a conferência do resultado (`check_result.py`) e a simulação GHDL (`sim/`) |
 | `docs/` | Documentação de build e do gabarito, em `pt-br` e `en` |
 
 ## 2. Uso rápido
@@ -35,14 +35,13 @@ O binário resultante junta o jogo e a camada de plataforma e por isso é GPL-2.
 
 O `doom1.wad` shareware tem licença própria, que permite redistribuir apenas o pacote original sem modificação. Ele também não fica neste repositório.
 
-## 4. O que falta para a placa
+## 4. A placa (etapa D1)
 
-Esta versão roda só no Spike, com a WAD embutida no ELF e o console pelo HTIF. A etapa D1 do plano ainda precisa de:
+O alvo `board` do `build.sh` gera o binário da plataforma `doom` do Insper-RISC-V, sem tela. O console sai pela JTAG UART, o relógio vem do `doom_clock.c` da plataforma, a WAD é carregada na SDRAM por `riscv-tools load-ram` e o resultado do `-timedemo` fica num bloco fixo da SDRAM, que o `dump-ram` lê. O mapa da SDRAM, os comandos e a conferência com o Spike estão em [docs/pt-br/PLACA.md](docs/pt-br/PLACA.md).
 
-1. Console pela JTAG UART no lugar do HTIF.
-2. WAD na SDRAM, acima do binário, carregada por `riscv-tools load-ram`.
-3. Relógio por `DG_GetTicksMs` com o `time` do Core (`doom_clock.c`).
-4. Plataforma `doom` do Insper-RISC-V, com `RAM` executável na SDRAM.
+```bash
+./fetch.sh && ./scripts/image.sh
+```
 
 ## 5. Contribuição
 

@@ -3,13 +3,22 @@
  *
  * Runtime minimo do DOOM sobre a picolibc, sem sistema de arquivos.
  *
- * Fornece: stdout/stderr (buffer de linha enviado ao console do Spike por
- * HTIF), `open` e afins que sempre falham (a WAD nao passa por eles, ver
- * doom_wad_mem.c), `_exit` com o resumo da execucao, e o `main` que monta
+ * Fornece: stdout/stderr, `open` e afins que sempre falham (a WAD nao passa por
+ * eles, ver doom_wad_mem.c), `_exit` com o resumo da execucao, e o `main` que monta
  * os argumentos de linha de comando.
  *
- * O HTIF e o mailbox do Spike (tohost e fromhost). Na placa, o console sera
- * a JTAG UART e este arquivo troca so as duas funcoes htif_*.
+ * O console tem dois destinos, escolhidos no build:
+ *  - padrao (Spike): buffer de linha enviado ao console do Spike por HTIF, o mailbox
+ *    do Spike (tohost e fromhost);
+ *  - DOOM_CONSOLE_UART (placa): cada byte vai direto a JTAG UART da plataforma doom
+ *    (slot 4, RV32_UART_BASE de memory_map.h), com o protocolo de runtime/stdio.c da
+ *    plataforma: so envia quando um hospedeiro varreu a UART (bit 17 do estado) e
+ *    espera um lugar na fila ate um limite.
+ *
+ * Ao terminar, _exit grava o bloco de resultado em DOOM_RESULT_ADDR (ver
+ * doom_platform.h), que o `dump-ram` le, e imprime o resumo. Na placa o programa fica
+ * repetindo o resumo na UART, para um console aberto depois o ver; no Spike encerra
+ * a simulacao.
  */
 
 #include <errno.h>
@@ -24,14 +33,67 @@
 #include "doomgeneric.h"
 #include "doom_platform.h"
 
-/* Mailbox HTIF, lido pelo Spike pelo nome do simbolo no ELF */
-volatile uint64_t tohost __attribute__((section(".tohost")));
-volatile uint64_t fromhost __attribute__((section(".fromhost")));
+#ifdef DOOM_CONSOLE_UART
+#include "memory_map.h"
+#endif
 
 /* Argumentos do DOOM; -timedemo roda a demo sem relogio de parede */
 #ifndef DOOM_ARGS
+#ifdef DOOM_INTERACTIVE
+/* Modo interativo (INTERACTIVE=1 no build.sh): titulo, menu e jogo, com o demo de atracao */
+#define DOOM_ARGS "doom", "-iwad", "doom1.wad"
+#else
 #define DOOM_ARGS "doom", "-iwad", "doom1.wad", "-timedemo", "demo1"
 #endif
+#endif
+
+#ifdef DOOM_CONSOLE_UART
+
+/* Registradores de transmissao e de estado da JTAG UART (runtime/stdio.c da plataforma) */
+#define UART_TXDATA ((volatile uint32_t *)RV32_UART_BASE)
+#define UART_STATUS ((volatile uint32_t *)(RV32_UART_BASE + 8u))
+
+/* Maximo de leituras do estado a espera de lugar na fila de transmissao */
+#define UART_WAIT_POLLS 200000u
+
+/* Envia um byte a UART quando ha um hospedeiro ouvindo, esperando lugar ate o limite */
+static void uart_put(char c)
+{
+    uint32_t status = *UART_STATUS;
+
+    if (((status >> 17) & 1u) == 0u)
+    {
+        return;
+    }
+    for (uint32_t polls = 0; (status & 0xFFu) == 0u; polls++)
+    {
+        if (polls == UART_WAIT_POLLS)
+        {
+            return;
+        }
+        status = *UART_STATUS;
+    }
+    *UART_TXDATA = (uint8_t)c;
+}
+
+/* putc do stdout e do stderr: direto na UART */
+static int console_putc(char c, FILE *f)
+{
+    (void)f;
+    uart_put(c);
+    return (unsigned char)c;
+}
+
+/* Nada a descarregar: a UART nao tem buffer de linha */
+static void console_flush(void)
+{
+}
+
+#else
+
+/* Mailbox HTIF, lido pelo Spike pelo nome do simbolo no ELF */
+volatile uint64_t tohost __attribute__((section(".tohost")));
+volatile uint64_t fromhost __attribute__((section(".fromhost")));
 
 /* Chamada de sistema write do proxy do Spike (numero da syscall do Linux/RISC-V) */
 #define HTIF_SYS_WRITE 64
@@ -54,7 +116,7 @@ static void htif_write(int fd, const char *buf, size_t len)
 }
 
 /* Termina a simulacao com o codigo dado (bit 0 de tohost marca o exit) */
-[[noreturn]] static void htif_exit(int code)
+[[noreturn, maybe_unused]] static void htif_exit(int code)
 {
     tohost = ((uint64_t)(uint32_t)code << 1) | 1u;
     for (;;)
@@ -66,12 +128,12 @@ static void htif_write(int fd, const char *buf, size_t len)
 static char line_buf[256];
 static size_t line_len;
 
-/* Descarrega o buffer de linha para o descritor fd */
-static void line_flush(int fd)
+/* Descarrega o buffer de linha para o console do Spike */
+static void console_flush(void)
 {
     if (line_len != 0)
     {
-        htif_write(fd, line_buf, line_len);
+        htif_write(1, line_buf, line_len);
         line_len = 0;
     }
 }
@@ -83,10 +145,12 @@ static int console_putc(char c, FILE *f)
     line_buf[line_len++] = c;
     if (c == '\n' || line_len == sizeof(line_buf))
     {
-        line_flush(1);
+        console_flush();
     }
     return (unsigned char)c;
 }
+
+#endif
 
 static FILE console_file = FDEV_SETUP_STREAM(console_putc, NULL, NULL, _FDEV_SETUP_WRITE);
 FILE *const stdout = &console_file;
@@ -137,7 +201,137 @@ int rename(const char *from, const char *to)
     return -1;
 }
 
-/* Encerra imprimindo o resumo que serve de gabarito (D0 e D1) */
+/* Bloco de resultado na SDRAM (doom_platform.h), lido pelo dump-ram */
+#define RESULT ((volatile uint32_t *)(uintptr_t)DOOM_RESULT_ADDR)
+
+/* Zera a palavra de magia, para um resultado de uma execucao anterior nao valer */
+static void result_clear(void)
+{
+    RESULT[DOOM_RES_MAGIC] = 0;
+}
+
+/* Grava o bloco de resultado; a magia vai por ultimo, e marca o bloco completo */
+static void result_write(int code, uint32_t crc, uint32_t frames, uint64_t instret,
+                         uint64_t per_frame)
+{
+    uint64_t cycles = doom_read_cycle();
+
+    RESULT[DOOM_RES_EXIT] = (uint32_t)code;
+    RESULT[DOOM_RES_CRC32] = crc;
+    RESULT[DOOM_RES_FRAMES] = frames;
+    RESULT[DOOM_RES_INSTRET_LO] = (uint32_t)instret;
+    RESULT[DOOM_RES_INSTRET_HI] = (uint32_t)(instret >> 32);
+    RESULT[DOOM_RES_PER_FRAME] = (uint32_t)per_frame;
+    RESULT[DOOM_RES_FB_ADDR] = (uint32_t)(uintptr_t)DG_ScreenBuffer;
+    RESULT[DOOM_RES_MS] = DG_GetTicksMs();
+    RESULT[DOOM_RES_CYCLE_LO] = (uint32_t)cycles;
+    RESULT[DOOM_RES_CYCLE_HI] = (uint32_t)(cycles >> 32);
+    __sync_synchronize();
+    RESULT[DOOM_RES_MAGIC] = DOOM_RESULT_MAGIC;
+}
+
+/* Linha de resumo que serve de gabarito (D0 e D1) */
+static void print_summary(int code, uint32_t crc, uint32_t frames, uint64_t instret,
+                          uint64_t per_frame)
+{
+    printf("DOOM-D0: exit=%d frames=%lu instret=%llu instret_per_frame=%llu frame_crc32=%08lx\n",
+           code, (unsigned long)frames, (unsigned long long)instret,
+           (unsigned long long)per_frame, (unsigned long)crc);
+    console_flush();
+}
+
+#ifdef DOOM_INTERACTIVE
+
+/*
+ * Reinicio limpo do programa (modo interativo). O I_Quit da doomgeneric sem ORIGCODE roda as funcoes de
+ * encerramento (libera o buffer de video, para o som) e VOLTA, o que deixa o jogo rodando sobre estado destruido; e
+ * o exit() de um I_Error caia no laco de resumo. Nos dois casos o programa volta ao inicio: restaura o .data, que o
+ * jogo foi alterando (o endereco de carga e o de execucao sao o mesmo, entao nao ha copia pristina na imagem) a
+ * partir da copia tirada no inicio do main, e salta para o _start, que zera o bss, refaz o TLS e chama o main. A
+ * WAD e o binario ja estao na SDRAM, nada e recarregado; o VIDEO e o KBD seguem ligados e mostram o ultimo quadro
+ * ate o primeiro quadro novo.
+ */
+extern char __data_start[];
+extern char __data_end[];
+extern void _start(void);
+
+/* Copia do .data na SDRAM livre (DOOM_DATA_BACKUP_ADDR, scripts/layout.sh) */
+#define DATA_BACKUP ((volatile uint32_t *)(uintptr_t)DOOM_DATA_BACKUP_ADDR)
+
+/* Guarda o .data inicial; chamada no inicio do main, antes de o jogo o alterar */
+static void data_snapshot(void)
+{
+    const volatile uint32_t *src = (const volatile uint32_t *)(uintptr_t)__data_start;
+    uint32_t words = (uint32_t)((uintptr_t)__data_end - (uintptr_t)__data_start) / 4u;
+
+    for (uint32_t i = 0; i < words; i++)
+    {
+        DATA_BACKUP[i] = src[i];
+    }
+}
+
+/* Espera ms milissegundos pelo relogio do jogo */
+static void wait_ms(uint32_t ms)
+{
+    uint32_t start = DG_GetTicksMs();
+
+    while ((uint32_t)(DG_GetTicksMs() - start) < ms)
+    {
+    }
+}
+
+/* Restaura o .data e salta para o _start; nenhuma chamada de biblioteca depois da restauracao */
+[[noreturn]] static void restart_program(void)
+{
+    volatile uint32_t *dst = (volatile uint32_t *)(uintptr_t)__data_start;
+    uint32_t words = (uint32_t)((uintptr_t)__data_end - (uintptr_t)__data_start) / 4u;
+
+    for (uint32_t i = 0; i < words; i++)
+    {
+        dst[i] = DATA_BACKUP[i];
+    }
+    _start();
+    for (;;)
+    {
+    }
+}
+
+/* Inatividade: o jogo ficou idle_ms sem nenhum evento de teclado (port/doom_video.c) e recomeca no titulo */
+void doom_restart_idle(uint32_t idle_ms)
+{
+    if (idle_ms % 60000u < 1000u)
+    {
+        printf("[DOOM] Inatividade de %lu min: reiniciando o jogo\n", (unsigned long)(idle_ms / 60000u));
+    }
+    else
+    {
+        printf("[DOOM] Inatividade de %lu s: reiniciando o jogo\n", (unsigned long)(idle_ms / 1000u));
+    }
+    console_flush();
+    restart_program();
+}
+
+/* Quit Game do menu: o jogo recomeca na tela de titulo, sem recarregar nada */
+void __wrap_I_Quit(void)
+{
+    printf("[DOOM] Quit Game: reiniciando o jogo (titulo e menu)\n");
+    console_flush();
+    restart_program();
+}
+
+#else
+
+/* Sem modo interativo o I_Quit e o original */
+extern void __real_I_Quit(void);
+
+void __wrap_I_Quit(void)
+{
+    __real_I_Quit();
+}
+
+#endif
+
+/* Encerra gravando o resultado e imprimindo o resumo */
 void _exit(int code)
 {
     uint64_t instret = doom_read_instret();
@@ -145,18 +339,41 @@ void _exit(int code)
     uint64_t first = doom_instret_first_frame();
     uint64_t last = doom_instret_last_frame();
     uint64_t per_frame = (frames > 1) ? (last - first) / (frames - 1) : 0;
+    uint32_t crc = doom_frame_crc32();
 
-    printf("DOOM-D0: exit=%d frames=%lu instret=%llu instret_per_frame=%llu frame_crc32=%08lx\n",
-           code, (unsigned long)frames, (unsigned long long)instret,
-           (unsigned long long)per_frame, (unsigned long)doom_frame_crc32());
-    line_flush(1);
+    result_write(code, crc, frames, instret, per_frame);
+    print_summary(code, crc, frames, instret, per_frame);
+#ifdef DOOM_INTERACTIVE
+    /* Fim por I_Error ou exit: deixa 3 s para ler a mensagem na UART e recomeca o jogo */
+    printf("[DOOM] fim do programa (codigo %d): reiniciando em 3 s\n", code);
+    console_flush();
+    wait_ms(3000u);
+    restart_program();
+#elif defined(DOOM_CONSOLE_UART)
+    /* Fica repetindo o resumo a cada 2 s, para um console aberto depois o ver */
+    for (;;)
+    {
+        uint32_t start = DG_GetTicksMs();
+
+        while ((uint32_t)(DG_GetTicksMs() - start) < 2000u)
+        {
+        }
+        print_summary(code, crc, frames, instret, per_frame);
+    }
+#else
     htif_exit(0);
+#endif
 }
 
 int main(void)
 {
     static char *args[] = { DOOM_ARGS };
 
+#ifdef DOOM_INTERACTIVE
+    data_snapshot();
+#endif
+    result_clear();
+    doom_measure_init();
     doomgeneric_Create((int)(sizeof(args) / sizeof(args[0])), args);
     for (;;)
     {

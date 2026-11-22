@@ -20,6 +20,39 @@
 
 #include "doomgeneric.h"
 #include "doom_platform.h"
+#ifdef DOOM_TEST_KEYS
+#include "doomkeys.h"
+#include "doomstat.h"
+#include "d_event.h"
+#include "d_ticcmd.h"
+
+/* Tics em que o G_BuildTiccmd montou cada comando (teste do mapa de teclas no Spike, TESTKEYS) */
+static uint32_t test_fwd_tics;
+static uint32_t test_back_tics;
+static uint32_t test_right_tics;
+static uint32_t test_left_tics;
+static uint32_t test_turn_tics;
+static uint32_t test_use_tics;
+static uint32_t test_fire_tics;
+
+extern void __real_G_BuildTiccmd(ticcmd_t *cmd);
+
+void __wrap_G_BuildTiccmd(ticcmd_t *cmd)
+{
+    __real_G_BuildTiccmd(cmd);
+    test_fwd_tics += cmd->forwardmove > 0;
+    test_back_tics += cmd->forwardmove < 0;
+    test_right_tics += cmd->sidemove > 0;
+    test_left_tics += cmd->sidemove < 0;
+    test_turn_tics += cmd->angleturn > 0;
+    test_use_tics += (cmd->buttons & BT_USE) != 0;
+    test_fire_tics += (cmd->buttons & BT_ATTACK) != 0;
+}
+#endif
+#ifdef CMAP256
+#include "doom_kbd.h"
+#include "doom_video.h"
+#endif
 
 /*
  * Ticks do CSR `time` por milissegundo. O `time` do Spike avanca 1 tick a
@@ -54,6 +87,134 @@ uint64_t doom_read_instret(void)
     return ((uint64_t)hi << 32) | lo;
 }
 
+/* Le o CSR cycle (64 bits) com a releitura do hi que o RV32 exige */
+uint64_t doom_read_cycle(void)
+{
+    uint32_t hi, lo, hi2;
+
+    do
+    {
+        __asm__ volatile("rdcycleh %0" : "=r"(hi));
+        __asm__ volatile("rdcycle %0" : "=r"(lo));
+        __asm__ volatile("rdcycleh %0" : "=r"(hi2));
+    } while (hi != hi2);
+    return ((uint64_t)hi << 32) | lo;
+}
+
+#ifdef DOOM_MEASURE
+
+/* Bloco de medicao na SDRAM (doom_platform.h), lido pelo dump-ram */
+#define MEAS ((volatile uint32_t *)(uintptr_t)DOOM_MEASURE_ADDR)
+
+#ifdef DOOM_MEASURE_HPM
+
+/* Codigos de evento do Zihpm (Core/src/Zicsr/csr_event_consts.vhd), um por contador de indice 3 a 11:
+ * 1 parada de mul/div, 2 espera por RAM externa, 3 desvio tomado, 4 acesso desalinhado,
+ * 5 falha da cache de instrucoes, 6 falha da cache de dados, 7 espera por FLASH,
+ * 8 parada por dependencia de load, 9 operacao fundida */
+static const uint8_t meas_events[DOOM_MEAS_HPM] = { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+
+/* Escreve o seletor de evento mhpmeventN (CSR 0x320 + N) */
+#define HPM_EVENT_WRITE(csr, code) __asm__ volatile("csrw " #csr ", %0" ::"r"(code))
+
+/* Le o contador hpmcounterN (CSR 0xC00 + N), so os 32 bits baixos; k e o indice menos 3 */
+static uint32_t meas_hpm_read(uint32_t k)
+{
+    uint32_t v = 0;
+
+    switch (k)
+    {
+    case 0: __asm__ volatile("csrr %0, 0xC03" : "=r"(v)); break;
+    case 1: __asm__ volatile("csrr %0, 0xC04" : "=r"(v)); break;
+    case 2: __asm__ volatile("csrr %0, 0xC05" : "=r"(v)); break;
+    case 3: __asm__ volatile("csrr %0, 0xC06" : "=r"(v)); break;
+    case 4: __asm__ volatile("csrr %0, 0xC07" : "=r"(v)); break;
+    case 5: __asm__ volatile("csrr %0, 0xC08" : "=r"(v)); break;
+    case 6: __asm__ volatile("csrr %0, 0xC09" : "=r"(v)); break;
+    case 7: __asm__ volatile("csrr %0, 0xC0A" : "=r"(v)); break;
+    default: __asm__ volatile("csrr %0, 0xC0B" : "=r"(v)); break;
+    }
+    return v;
+}
+
+#endif /* DOOM_MEASURE_HPM */
+
+void doom_measure_init(void)
+{
+    MEAS[DOOM_MEAS_H_MAGIC] = 0;
+    MEAS[DOOM_MEAS_H_COUNT] = 0;
+    MEAS[DOOM_MEAS_H_STEP] = DOOM_MEAS_STEP;
+#ifdef DOOM_MEASURE_HPM
+    MEAS[DOOM_MEAS_H_NHPM] = DOOM_MEAS_HPM;
+    /* mcountinhibit = 0: todos os contadores contam; depois o evento de cada um */
+    __asm__ volatile("csrw 0x320, zero");
+    HPM_EVENT_WRITE(0x323, meas_events[0]);
+    HPM_EVENT_WRITE(0x324, meas_events[1]);
+    HPM_EVENT_WRITE(0x325, meas_events[2]);
+    HPM_EVENT_WRITE(0x326, meas_events[3]);
+    HPM_EVENT_WRITE(0x327, meas_events[4]);
+    HPM_EVENT_WRITE(0x328, meas_events[5]);
+    HPM_EVENT_WRITE(0x329, meas_events[6]);
+    HPM_EVENT_WRITE(0x32A, meas_events[7]);
+    HPM_EVENT_WRITE(0x32B, meas_events[8]);
+    for (uint32_t k = 0; k < DOOM_MEAS_HPM; k++)
+    {
+        MEAS[DOOM_MEAS_H_EVENTS + k] = meas_events[k];
+    }
+#else
+    MEAS[DOOM_MEAS_H_NHPM] = 0;
+#endif
+    /* instantaneo de partida (quadro 0): da a janela 0 a 100 */
+    doom_measure_snapshot(0);
+}
+
+void doom_measure_snapshot(uint32_t frames)
+{
+    if (frames % DOOM_MEAS_STEP != 0)
+    {
+        return;
+    }
+
+    uint32_t idx = MEAS[DOOM_MEAS_H_COUNT];
+
+    if (idx >= DOOM_MEAS_MAX)
+    {
+        return;
+    }
+
+    volatile uint32_t *s = MEAS + DOOM_MEAS_HEAD_WORDS + idx * DOOM_MEAS_SNAP_WORDS;
+    uint64_t cyc = doom_read_cycle();
+    uint64_t ins = doom_read_instret();
+
+    s[DOOM_MEAS_S_FRAME] = frames;
+    s[DOOM_MEAS_S_CYC_LO] = (uint32_t)cyc;
+    s[DOOM_MEAS_S_CYC_HI] = (uint32_t)(cyc >> 32);
+    s[DOOM_MEAS_S_INS_LO] = (uint32_t)ins;
+    s[DOOM_MEAS_S_INS_HI] = (uint32_t)(ins >> 32);
+#ifdef DOOM_MEASURE_HPM
+    for (uint32_t k = 0; k < DOOM_MEAS_HPM; k++)
+    {
+        s[DOOM_MEAS_S_HPM + k] = meas_hpm_read(k);
+    }
+#endif
+    __sync_synchronize();
+    MEAS[DOOM_MEAS_H_COUNT] = idx + 1u;
+    MEAS[DOOM_MEAS_H_MAGIC] = DOOM_MEAS_MAGIC;
+}
+
+#else
+
+void doom_measure_init(void)
+{
+}
+
+void doom_measure_snapshot(uint32_t frames)
+{
+    (void)frames;
+}
+
+#endif /* DOOM_MEASURE */
+
 #ifdef DOOM_USE_TIME_CSR
 /* Le o CSR time (64 bits) com a releitura do hi que o RV32 exige */
 static uint64_t read_time(void)
@@ -72,7 +233,14 @@ static uint64_t read_time(void)
 
 void DG_Init(void)
 {
-    /* Spike: sem tela nem teclado para inicializar */
+#ifdef DOOM_FB_ADDR
+    /*
+     * Framebuffer num endereco fixo da SDRAM (scripts/layout.sh): o `dump-ram` o
+     * le sem precisar do ponteiro do malloc. A doomgeneric ja alocou o dela antes
+     * de chamar DG_Init; aquela area fica sem uso.
+     */
+    DG_ScreenBuffer = (pixel_t *)(uintptr_t)DOOM_FB_ADDR;
+#endif
 }
 
 void DG_SleepMs(uint32_t ms)
@@ -85,6 +253,11 @@ void DG_SleepMs(uint32_t ms)
     }
 }
 
+#ifndef DOOM_PLATFORM_CLOCK
+/*
+ * Na placa (DOOM_PLATFORM_CLOCK) esta funcao vem de runtime/doom_clock.c da
+ * plataforma doom, copiado pelo build; aqui fica so a dos alvos do Spike.
+ */
 uint32_t DG_GetTicksMs(void)
 {
 #ifdef DOOM_USE_TIME_CSR
@@ -94,13 +267,63 @@ uint32_t DG_GetTicksMs(void)
     return (uint32_t)(doom_read_instret() / 100000u);
 #endif
 }
+#endif
 
 int DG_GetKey(int *pressed, unsigned char *key)
 {
+#ifdef DOOM_VIDEO
+    /* Teclado PS/2 do KBD: le os bytes pendentes e entrega um evento da fila por chamada */
+    doom_kbd_poll();
+    return doom_kbd_pop(pressed, key);
+#elif defined(DOOM_TEST_KEYS)
+    /*
+     * Teste no Spike: bytes de scancode (conjunto 2) entregues ao decodificador nos quadros indicados, como se
+     * viessem do KBD. TESTKEYS=1: Quit Game (F10 e Y). TESTKEYS=2: novo jogo pelo menu (Esc, Enter, Enter), depois W,
+     * D, seta esquerda e E, cada uma segurada por 40 quadros.
+     */
+    static const struct
+    {
+        uint32_t frame;
+        uint8_t bytes[3];
+        uint8_t count;
+    } script[] = {
+#if DOOM_TEST_KEYS == 1
+        { 600u, { 0x09 }, 1 }, { 610u, { 0xF0, 0x09 }, 2 }, { 700u, { 0x35 }, 1 }, { 710u, { 0xF0, 0x35 }, 2 },
+#elif DOOM_TEST_KEYS == 3
+        /* Inatividade: Esc abre o menu e, mais tarde, uma tecla no meio da espera recomeca a contagem */
+        { 300u, { 0x76 }, 1 }, { 305u, { 0xF0, 0x76 }, 2 }, { 900u, { 0x4D }, 1 }, { 905u, { 0xF0, 0x4D }, 2 },
+#else
+        /* Esc abre o menu; no menu E confirma, S desce e W sobe (New Game, episodio, dificuldade) */
+        { 300u, { 0x76 }, 1 }, { 305u, { 0xF0, 0x76 }, 2 }, { 330u, { 0x24 }, 1 }, { 335u, { 0xF0, 0x24 }, 2 },
+        { 360u, { 0x24 }, 1 }, { 365u, { 0xF0, 0x24 }, 2 }, { 375u, { 0x1B }, 1 }, { 378u, { 0xF0, 0x1B }, 2 },
+        { 382u, { 0x1D }, 1 }, { 385u, { 0xF0, 0x1D }, 2 }, { 390u, { 0x24 }, 1 }, { 395u, { 0xF0, 0x24 }, 2 },
+        { 700u, { 0x1D }, 1 }, { 740u, { 0xF0, 0x1D }, 2 },  /* W: frente */
+        { 780u, { 0x23 }, 1 }, { 820u, { 0xF0, 0x23 }, 2 },  /* D: desliza para a direita */
+        { 860u, { 0xE0, 0x6B }, 2 }, { 900u, { 0xE0, 0xF0, 0x6B }, 3 }, /* seta esquerda: gira */
+        { 940u, { 0x24 }, 1 }, { 980u, { 0xF0, 0x24 }, 2 },  /* E: usar */
+        { 1020u, { 0x29 }, 1 }, { 1060u, { 0xF0, 0x29 }, 2 }, /* Espaco: atirar */
+        { 1100u, { 0x14 }, 1 }, { 1140u, { 0xF0, 0x14 }, 2 }, /* Ctrl: atirar */
+#endif
+    };
+    static unsigned pos;
+
+    while (pos < sizeof(script) / sizeof(script[0]) && frames_drawn >= script[pos].frame)
+    {
+        printf("[TEST] teclas no quadro %lu, relogio %lu ms\n", (unsigned long)frames_drawn,
+               (unsigned long)DG_GetTicksMs());
+        for (unsigned i = 0; i < script[pos].count; i++)
+        {
+            doom_kbd_feed(script[pos].bytes[i]);
+        }
+        pos++;
+    }
+    return doom_kbd_pop(pressed, key);
+#else
     /* Sem teclado: nenhum evento pendente */
     (void)pressed;
     (void)key;
     return 0;
+#endif
 }
 
 void DG_SetWindowTitle(const char *title)
@@ -110,18 +333,42 @@ void DG_SetWindowTitle(const char *title)
 
 void DG_DrawFrame(void)
 {
+    /* Instantaneo dos contadores, antes de qualquer outro trabalho desta chamada */
+    doom_measure_snapshot(frames_drawn + 1u);
+#ifdef DOOM_MEASURE_STOP
+    /* Janela pedida concluida: encerra (o _exit grava o resumo e fica repetindo-o) */
+    if (frames_drawn + 1u == DOOM_MEASURE_STOP)
+    {
+        extern void _exit(int);
+        _exit(0);
+    }
+#endif
     if (frames_drawn == 0)
     {
         instret_first_frame = doom_read_instret();
     }
     instret_last_frame = doom_read_instret();
     frames_drawn++;
+#ifdef CMAP256
+    /* Quadro indexado: paleta e indices para o VIDEO (placa), CRC-32 dos primeiros quadros e fps */
+    doom_video_frame(frames_drawn);
+#ifdef DOOM_TEST_KEYS
+    if (frames_drawn >= 660u && frames_drawn % 40u == 0u)
+    {
+        printf("[TEST] f=%lu gs=%d demo=%d tics: frente=%lu tras=%lu direita=%lu esquerda=%lu giro_esq=%lu usar=%lu atirar=%lu\n",
+               (unsigned long)frames_drawn, (int)gamestate, (int)demoplayback, (unsigned long)test_fwd_tics,
+               (unsigned long)test_back_tics, (unsigned long)test_right_tics, (unsigned long)test_left_tics,
+               (unsigned long)test_turn_tics, (unsigned long)test_use_tics, (unsigned long)test_fire_tics);
+    }
+#endif
+#else
     /* Progresso a cada 100 quadros, para acompanhar a execucao longa no Spike */
     if (frames_drawn % 100u == 0)
     {
         printf("frame %lu instret %llu\n", (unsigned long)frames_drawn,
                (unsigned long long)instret_last_frame);
     }
+#endif
 }
 
 uint32_t doom_frames_drawn(void)

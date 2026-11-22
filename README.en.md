@@ -11,10 +11,10 @@ Only code written for this project, under Apache 2.0.
 | Item | Purpose |
 | :--- | :--- |
 | `fetch.sh` | Downloads `doomgeneric` at a pinned commit and the shareware WAD, and checks the SHA-256 of each |
-| `build.sh` | Builds the port for `rv32im` with `ilp32` in the `dev_tools` container |
+| `build.sh` | Builds the port for `rv32im` with `ilp32` in the `dev_tools` container, for the `spike`, `layout` and `board` targets |
 | `run.sh` | Runs `-timedemo demo1` on Spike and checks the CRC-32 of the last frame |
 | `port/` | Platform layer (`DG_*`), in-memory WAD backend, runtime and linker script |
-| `scripts/` | Functions shared by the scripts |
+| `scripts/` | Shared functions, the SDRAM map (`layout.sh`), the board image (`image.sh`), the result check (`check_result.py`) and the GHDL simulation (`sim/`) |
 | `docs/` | Build and golden-result documentation, in `pt-br` and `en` |
 
 ## 2. Quick start
@@ -35,14 +35,13 @@ The resulting binary combines the game and the platform layer, so it is GPL-2.0.
 
 The shareware `doom1.wad` has its own license, which allows redistributing only the original unmodified package. It is not kept in this repository either.
 
-## 4. What is missing for the board
+## 4. The board (stage D1)
 
-This version runs only on Spike, with the WAD embedded in the ELF and the console over HTIF. Stage D1 of the plan still needs:
+The `board` target of `build.sh` produces the binary for the Insper-RISC-V `doom` platform, with no screen. The console goes out over the JTAG UART, the clock comes from the platform `doom_clock.c`, the WAD is loaded into SDRAM by `riscv-tools load-ram`, and the `-timedemo` result sits in a fixed SDRAM block that `dump-ram` reads. The SDRAM map, the commands and the comparison with Spike are in [docs/en/BOARD.md](docs/en/BOARD.md).
 
-1. Console over the JTAG UART instead of HTIF.
-2. WAD in SDRAM, above the binary, loaded by `riscv-tools load-ram`.
-3. Clock through `DG_GetTicksMs` using the Core `time` CSR (`doom_clock.c`).
-4. The Insper-RISC-V `doom` platform, with executable `RAM` in SDRAM.
+```bash
+./fetch.sh && ./scripts/image.sh
+```
 
 ## 5. Contributing
 
