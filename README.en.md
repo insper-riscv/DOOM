@@ -35,9 +35,9 @@ The resulting binary combines the game and the platform layer, so it is GPL-2.0.
 
 The shareware `doom1.wad` has its own license, which allows redistributing only the original unmodified package. It is not kept in this repository either.
 
-## 4. The board (stage D1)
+## 4. The board
 
-The `board` target of `build.sh` produces the binary for the Insper-RISC-V `doom` platform, with no screen. The console goes out over the JTAG UART, the clock comes from the platform `doom_clock.c`, the WAD is loaded into SDRAM by `riscv-tools load-ram`, and the `-timedemo` result sits in a fixed SDRAM block that `dump-ram` reads. The SDRAM map, the commands and the comparison with Spike are in [docs/en/BOARD.md](docs/en/BOARD.md).
+The `board` target of `build.sh` produces the binary for the Insper-RISC-V `doom` platform. The console goes out over the JTAG UART, the clock comes from the platform `doom_clock.c`, and the WAD is loaded into SDRAM by `riscv-tools load-ram`. `VIDEO=1` turns on the VGA output and `INTERACTIVE=1` turns on the PS/2 keyboard and the full game; without them, the `-timedemo` leaves its result in a fixed SDRAM block that `dump-ram` reads. The SDRAM map, the commands and the comparison with Spike are in [docs/en/BOARD.md](docs/en/BOARD.md).
 
 ```bash
 ./fetch.sh && ./scripts/image.sh
