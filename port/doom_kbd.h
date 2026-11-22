@@ -28,6 +28,9 @@ struct doom_kbd_stats
 /* Entrega ao decodificador um byte do teclado (conjunto 2) */
 void doom_kbd_feed(uint8_t byte);
 
+/* Funcao que diz se o menu navega por W S A D e E (devolve diferente de zero); NULL desliga */
+void doom_kbd_set_menu_hook(int (*hook)(void));
+
 /* Solta todas as teclas pressionadas e zera o decodificador (apos um byte perdido) */
 void doom_kbd_reset(void);
 

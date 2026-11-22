@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Teste no computador do decodificador de scancodes (port/doom_kbd.c, sem DOOM_VIDEO):
- *   gcc -std=gnu17 -Wall -Wextra -Werror -Idoomgeneric/doomgeneric -Iport scripts/test_kbd.c port/doom_kbd.c -o test_kbd && ./test_kbd
+ *   gcc -std=gnu17 -Wall -Wextra -Werror -DDOOM_KBD_HOST_TEST -Idoomgeneric/doomgeneric -Iport scripts/test_kbd.c port/doom_kbd.c -o test_kbd && ./test_kbd
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +12,12 @@
 #include "doom_kbd.h"
 
 static int failures;
+static int menu_active;
+
+static int menu_hook(void)
+{
+    return menu_active;
+}
 
 static void feed(const unsigned char *bytes, unsigned n)
 {
@@ -88,10 +94,10 @@ int main(void)
 
     /* Ctrl esquerdo e direito: duas teclas fisicas, soltar uma nao solta a outra por engano */
     FEED(0x14, 0xE0, 0x14, 0xF0, 0x14, 0xE0, 0xF0, 0x14);
-    expect(1, KEY_FIRE, "ctrl esquerdo");
-    expect(1, KEY_FIRE, "ctrl direito");
-    expect(0, KEY_FIRE, "solta ctrl esquerdo");
-    expect(0, KEY_FIRE, "solta ctrl direito");
+    expect(1, ' ', "ctrl esquerdo");
+    expect(1, ' ', "ctrl direito");
+    expect(0, ' ', "solta ctrl esquerdo");
+    expect(0, ' ', "solta ctrl direito");
     expect_empty("ctrl");
 
     /* Shift, Alt, Espaco, Enter, Esc, Tab, Backspace */
@@ -100,7 +106,7 @@ int main(void)
     expect(1, KEY_RSHIFT, "shift direito");
     expect(1, KEY_LALT, "alt");
     expect(1, KEY_LALT, "alt direito");
-    expect(1, KEY_USE, "espaco");
+    expect(1, ' ', "espaco");
     expect(1, KEY_ENTER, "enter");
     expect(1, KEY_ENTER, "enter do teclado numerico");
     expect(1, KEY_ESCAPE, "esc");
@@ -139,7 +145,7 @@ int main(void)
         { 0x44, 'o' }, { 0x4D, 'p' }, { 0x15, 'q' }, { 0x2D, 'r' }, { 0x1B, 's' }, { 0x2C, 't' }, { 0x3C, 'u' },
         { 0x2A, 'v' }, { 0x1D, 'w' }, { 0x22, 'x' }, { 0x35, 'y' }, { 0x1A, 'z' }, { 0x45, '0' }, { 0x16, '1' },
         { 0x1E, '2' }, { 0x26, '3' }, { 0x25, '4' }, { 0x2E, '5' }, { 0x36, '6' }, { 0x3D, '7' }, { 0x3E, '8' },
-        { 0x46, '9' }, { 0x4E, KEY_MINUS }, { 0x55, KEY_EQUALS }, { 0x41, KEY_STRAFE_L }, { 0x49, KEY_STRAFE_R },
+        { 0x46, '9' }, { 0x4E, KEY_MINUS }, { 0x55, KEY_EQUALS }, { 0x41, ',' }, { 0x49, '.' },
     };
 
     for (unsigned i = 0; i < sizeof(table) / sizeof(table[0]); i++)
@@ -179,6 +185,46 @@ int main(void)
         printf("FALHA fila: %d eventos, %u descartados\n", count, doom_kbd_get_stats()->dropped);
         failures++;
     }
+
+    /* menu ativo: W S A D e E viram setas e Enter; as outras letras (Y, N, O) ficam */
+    menu_active = 1;
+    doom_kbd_set_menu_hook(menu_hook);
+    FEED(0x1D, 0xF0, 0x1D, 0x1B, 0xF0, 0x1B, 0x1C, 0xF0, 0x1C, 0x23, 0xF0, 0x23, 0x24, 0xF0, 0x24);
+    FEED(0x35, 0xF0, 0x35, 0x31, 0xF0, 0x31, 0x44, 0xF0, 0x44);
+    static const unsigned char menu_keys[] = { KEY_UPARROW, KEY_DOWNARROW, KEY_LEFTARROW, KEY_RIGHTARROW, KEY_ENTER, 'y', 'n', 'o' };
+
+    for (unsigned i = 0; i < sizeof(menu_keys); i++)
+    {
+        expect(1, menu_keys[i], "tecla no menu");
+        expect(0, menu_keys[i], "solta no menu");
+    }
+    expect_empty("menu");
+
+    /* digitacao de texto no menu (nome de save): as letras normais, WASD inclusive */
+    menu_active = 0;
+    FEED(0x1D, 0xF0, 0x1D, 0x1C, 0xF0, 0x1C, 0x1B, 0xF0, 0x1B, 0x23, 0xF0, 0x23, 0x24, 0xF0, 0x24);
+    static const unsigned char text_keys[] = { 'w', 'a', 's', 'd', 'e' };
+
+    for (unsigned i = 0; i < sizeof(text_keys); i++)
+    {
+        expect(1, text_keys[i], "letra no texto");
+        expect(0, text_keys[i], "solta no texto");
+    }
+    expect_empty("texto do save");
+
+    /* o menu abre com a tecla pressionada: a soltura entrega a tecla do make, nada fica preso */
+    FEED(0x1D);
+    menu_active = 1;
+    FEED(0xF0, 0x1D);
+    expect(1, 'w', "w pressionada no jogo");
+    expect(0, 'w', "w solta com o menu aberto");
+    FEED(0x1D);
+    menu_active = 0;
+    FEED(0xF0, 0x1D);
+    expect(1, KEY_UPARROW, "w pressionada no menu");
+    expect(0, KEY_UPARROW, "w solta com o menu fechado");
+    expect_empty("troca de contexto");
+    doom_kbd_set_menu_hook(NULL);
 
     /* registro de eventos */
     char log[64];

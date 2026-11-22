@@ -106,6 +106,8 @@ if [ "${VIDEO:-0}" = 1 ]; then
   DEFS="$DEFS -DCMAP256"
   PORT_DEFS="$PORT_DEFS -DDOOM_VSTAT_ADDR=$VSTAT_ADDR"
   DOOM_SRC_PORT="$DOOM_SRC_PORT doom_kbd doom_video"
+  # W A S D movem o jogador (port/doom_kbd.c, __wrap_I_InitInput)
+  LINK_DEFS="$LINK_DEFS -Wl,--wrap=I_InitInput"
   if [ "$TARGET" = board ]; then
     PORT_DEFS="$PORT_DEFS -DDOOM_VIDEO"
   fi
@@ -126,12 +128,13 @@ if [ "${INTERACTIVE:-0}" = 1 ]; then
   PORT_DEFS="$PORT_DEFS -DDOOM_INTERACTIVE -DDOOM_DATA_BACKUP_ADDR=$DATA_BACKUP_ADDR"
 fi
 # TESTKEYS=1 (so no alvo layout, no Spike): injeta F10 e Y (Quit Game) para testar o reinicio sem teclado
-if [ "${TESTKEYS:-0}" = 1 ]; then
-  if [ "$TARGET" != layout ]; then
-    echo "TESTKEYS=1 pede TARGET=layout" >&2
+if [ "${TESTKEYS:-0}" != 0 ]; then
+  if [ "$TARGET" != layout ] || [ "${VIDEO:-0}" != 1 ]; then
+    echo "TESTKEYS pede TARGET=layout e VIDEO=1" >&2
     exit 1
   fi
-  PORT_DEFS="$PORT_DEFS -DDOOM_TEST_KEYS"
+  PORT_DEFS="$PORT_DEFS -DDOOM_TEST_KEYS=$TESTKEYS"
+  LINK_DEFS="$LINK_DEFS -Wl,--wrap=G_BuildTiccmd"
 fi
 # Codigo da doomgeneric e C89/C99 de terceiros: sem os avisos do projeto
 GAME_FLAGS="-std=gnu99 -w -fcommon -ffunction-sections"

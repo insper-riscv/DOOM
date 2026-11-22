@@ -22,6 +22,32 @@
 #include "doom_platform.h"
 #ifdef DOOM_TEST_KEYS
 #include "doomkeys.h"
+#include "doomstat.h"
+#include "d_event.h"
+#include "d_ticcmd.h"
+
+/* Tics em que o G_BuildTiccmd montou cada comando (teste do mapa de teclas no Spike, TESTKEYS) */
+static uint32_t test_fwd_tics;
+static uint32_t test_back_tics;
+static uint32_t test_right_tics;
+static uint32_t test_left_tics;
+static uint32_t test_turn_tics;
+static uint32_t test_use_tics;
+static uint32_t test_fire_tics;
+
+extern void __real_G_BuildTiccmd(ticcmd_t *cmd);
+
+void __wrap_G_BuildTiccmd(ticcmd_t *cmd)
+{
+    __real_G_BuildTiccmd(cmd);
+    test_fwd_tics += cmd->forwardmove > 0;
+    test_back_tics += cmd->forwardmove < 0;
+    test_right_tics += cmd->sidemove > 0;
+    test_left_tics += cmd->sidemove < 0;
+    test_turn_tics += cmd->angleturn > 0;
+    test_use_tics += (cmd->buttons & BT_USE) != 0;
+    test_fire_tics += (cmd->buttons & BT_ATTACK) != 0;
+}
 #endif
 #ifdef CMAP256
 #include "doom_kbd.h"
@@ -250,25 +276,43 @@ int DG_GetKey(int *pressed, unsigned char *key)
     doom_kbd_poll();
     return doom_kbd_pop(pressed, key);
 #elif defined(DOOM_TEST_KEYS)
-    /* Teste no Spike (TESTKEYS=1): Quit Game pelo F10 e Y, por quadros entregues */
+    /*
+     * Teste no Spike: bytes de scancode (conjunto 2) entregues ao decodificador nos quadros indicados, como se
+     * viessem do KBD. TESTKEYS=1: Quit Game (F10 e Y). TESTKEYS=2: novo jogo pelo menu (Esc, Enter, Enter), depois W,
+     * D, seta esquerda e E, cada uma segurada por 40 quadros.
+     */
     static const struct
     {
         uint32_t frame;
-        int pressed;
-        unsigned char key;
+        uint8_t bytes[3];
+        uint8_t count;
     } script[] = {
-        { 600u, 1, KEY_F10 }, { 610u, 0, KEY_F10 }, { 700u, 1, 'y' }, { 710u, 0, 'y' },
+#if DOOM_TEST_KEYS == 1
+        { 600u, { 0x09 }, 1 }, { 610u, { 0xF0, 0x09 }, 2 }, { 700u, { 0x35 }, 1 }, { 710u, { 0xF0, 0x35 }, 2 },
+#else
+        /* Esc abre o menu; no menu E confirma, S desce e W sobe (New Game, episodio, dificuldade) */
+        { 300u, { 0x76 }, 1 }, { 305u, { 0xF0, 0x76 }, 2 }, { 330u, { 0x24 }, 1 }, { 335u, { 0xF0, 0x24 }, 2 },
+        { 360u, { 0x24 }, 1 }, { 365u, { 0xF0, 0x24 }, 2 }, { 375u, { 0x1B }, 1 }, { 378u, { 0xF0, 0x1B }, 2 },
+        { 382u, { 0x1D }, 1 }, { 385u, { 0xF0, 0x1D }, 2 }, { 390u, { 0x24 }, 1 }, { 395u, { 0xF0, 0x24 }, 2 },
+        { 700u, { 0x1D }, 1 }, { 740u, { 0xF0, 0x1D }, 2 },  /* W: frente */
+        { 780u, { 0x23 }, 1 }, { 820u, { 0xF0, 0x23 }, 2 },  /* D: desliza para a direita */
+        { 860u, { 0xE0, 0x6B }, 2 }, { 900u, { 0xE0, 0xF0, 0x6B }, 3 }, /* seta esquerda: gira */
+        { 940u, { 0x24 }, 1 }, { 980u, { 0xF0, 0x24 }, 2 },  /* E: usar */
+        { 1020u, { 0x29 }, 1 }, { 1060u, { 0xF0, 0x29 }, 2 }, /* Espaco: atirar */
+        { 1100u, { 0x14 }, 1 }, { 1140u, { 0xF0, 0x14 }, 2 }, /* Ctrl: atirar */
+#endif
     };
     static unsigned pos;
 
-    if (pos < sizeof(script) / sizeof(script[0]) && frames_drawn >= script[pos].frame)
+    while (pos < sizeof(script) / sizeof(script[0]) && frames_drawn >= script[pos].frame)
     {
-        *pressed = script[pos].pressed;
-        *key = script[pos].key;
+        for (unsigned i = 0; i < script[pos].count; i++)
+        {
+            doom_kbd_feed(script[pos].bytes[i]);
+        }
         pos++;
-        return 1;
     }
-    return 0;
+    return doom_kbd_pop(pressed, key);
 #else
     /* Sem teclado: nenhum evento pendente */
     (void)pressed;
@@ -303,6 +347,15 @@ void DG_DrawFrame(void)
 #ifdef CMAP256
     /* Quadro indexado: paleta e indices para o VIDEO (placa), CRC-32 dos primeiros quadros e fps */
     doom_video_frame(frames_drawn);
+#ifdef DOOM_TEST_KEYS
+    if (frames_drawn >= 660u && frames_drawn % 40u == 0u)
+    {
+        printf("[TEST] f=%lu gs=%d demo=%d tics: frente=%lu tras=%lu direita=%lu esquerda=%lu giro_esq=%lu usar=%lu atirar=%lu\n",
+               (unsigned long)frames_drawn, (int)gamestate, (int)demoplayback, (unsigned long)test_fwd_tics,
+               (unsigned long)test_back_tics, (unsigned long)test_right_tics, (unsigned long)test_left_tics,
+               (unsigned long)test_turn_tics, (unsigned long)test_use_tics, (unsigned long)test_fire_tics);
+    }
+#endif
 #else
     /* Progresso a cada 100 quadros, para acompanhar a execucao longa no Spike */
     if (frames_drawn % 100u == 0)

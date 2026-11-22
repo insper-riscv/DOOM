@@ -9,12 +9,13 @@
  * (autoteste), FE (reenvio), 00 (excesso) e FF (erro) nao sao teclas e sao descartados.
  *
  * Mapa de jogo (doomkeys.h):
- *   setas (E0 75, 72, 6B, 74)        andar e girar        Ctrl (14 e E0 14)  atirar
- *   Espaco (29)                      usar / abrir porta   Shift (12 e 59)    correr
+ *   W A S D                          frente, tras e deslizar de lado (ver __wrap_I_InitInput)
+ *   E                                usar / abrir porta   Espaco (29)        atirar
+ *   setas esquerda e direita         girar (as quatro setas navegam nos menus)
+ *   Ctrl (14 e E0 14)                atirar tambem        Shift (12 e 59)    correr
  *   Alt (11 e E0 11)                 com as setas, deslizar de lado
- *   virgula e ponto (41, 49)         deslizar para a esquerda e a direita
  *   Enter (5A e E0 5A), Esc (76), Tab (0D), Backspace (66), F1 a F12
- *   letras A a Z, 0 a 9, '-' e '=' como o ASCII minusculo que os menus e os cheats esperam
+ *   letras A a Z, 0 a 9, '-', '=', ',' e '.' como o ASCII que os menus e os cheats esperam
  */
 
 #include <stdbool.h>
@@ -23,6 +24,9 @@
 
 #include "doomkeys.h"
 #include "doom_kbd.h"
+#ifndef DOOM_KBD_HOST_TEST
+#include "doomstat.h"
+#endif
 
 #ifdef DOOM_VIDEO
 #include "memory_map.h"
@@ -53,9 +57,9 @@ static const uint8_t normal_map[SET2_SIZE] = {
     [0x45] = '0', [0x16] = '1', [0x1E] = '2', [0x26] = '3', [0x25] = '4', [0x2E] = '5',
     [0x36] = '6', [0x3D] = '7', [0x3E] = '8', [0x46] = '9', [0x4E] = KEY_MINUS, [0x55] = KEY_EQUALS,
     /* virgula e ponto deslizam de lado */
-    [0x41] = KEY_STRAFE_L, [0x49] = KEY_STRAFE_R,
+    [0x41] = ',', [0x49] = '.',
     /* acoes */
-    [0x14] = KEY_FIRE, [0x29] = KEY_USE, [0x12] = KEY_RSHIFT, [0x59] = KEY_RSHIFT, [0x11] = KEY_LALT,
+    [0x14] = ' ', [0x29] = ' ', [0x12] = KEY_RSHIFT, [0x59] = KEY_RSHIFT, [0x11] = KEY_LALT,
     [0x5A] = KEY_ENTER, [0x76] = KEY_ESCAPE, [0x0D] = KEY_TAB, [0x66] = KEY_BACKSPACE,
     /* F1 a F12 */
     [0x05] = KEY_F1, [0x06] = KEY_F2, [0x04] = KEY_F3, [0x0C] = KEY_F4, [0x03] = KEY_F5,
@@ -66,7 +70,7 @@ static const uint8_t normal_map[SET2_SIZE] = {
 /* Com o prefixo E0; E0 12 e E0 F0 12 (Shift falso do PrtSc e do Insert) ficam de fora de proposito */
 static const uint8_t ext_map[SET2_SIZE] = {
     [0x75] = KEY_UPARROW, [0x72] = KEY_DOWNARROW, [0x6B] = KEY_LEFTARROW, [0x74] = KEY_RIGHTARROW,
-    [0x14] = KEY_FIRE, [0x11] = KEY_LALT, [0x5A] = KEY_ENTER,
+    [0x14] = ' ', [0x11] = KEY_LALT, [0x5A] = KEY_ENTER,
 };
 
 /* Fila de eventos de software: pressed no byte alto e a tecla no baixo */
@@ -75,8 +79,39 @@ static uint16_t queue[QUEUE_SIZE];
 static uint32_t queue_head;
 static uint32_t queue_tail;
 
-/* Teclas fisicas (codigo e prefixo) hoje pressionadas, um bit por codigo */
-static uint8_t down[2][SET2_SIZE / 8u + 1u];
+/*
+ * Teclas fisicas (codigo e prefixo) hoje pressionadas: guarda a tecla do DOOM que o make entregou (zero se solta), e
+ * a soltura entrega a mesma, mesmo que o menu tenha aberto ou fechado no meio (nenhuma tecla fica presa)
+ */
+static uint8_t emitted[2][SET2_SIZE];
+
+/* Diz se o menu esta ativo e nao em digitacao de texto (WASD e E navegam); NULL ou 0: letras normais */
+static int (*menu_nav_hook)(void);
+
+void doom_kbd_set_menu_hook(int (*hook)(void))
+{
+    menu_nav_hook = hook;
+}
+
+/* No menu, W S A D e E viram as setas e o Enter */
+static uint8_t menu_translate(uint8_t key)
+{
+    switch (key)
+    {
+    case 'w':
+        return KEY_UPARROW;
+    case 's':
+        return KEY_DOWNARROW;
+    case 'a':
+        return KEY_LEFTARROW;
+    case 'd':
+        return KEY_RIGHTARROW;
+    case 'e':
+        return KEY_ENTER;
+    default:
+        return key;
+    }
+}
 
 /* Estado do decodificador */
 static bool seen_ext;
@@ -90,19 +125,6 @@ static struct doom_kbd_stats stats;
 static char log_buf[LOG_SIZE];
 static uint32_t log_len;
 static uint32_t log_lost;
-
-static bool down_get(bool ext, uint8_t code)
-{
-    return (down[ext ? 1u : 0u][code >> 3] >> (code & 7u)) & 1u;
-}
-
-static void down_set(bool ext, uint8_t code, bool value)
-{
-    uint8_t *byte = &down[ext ? 1u : 0u][code >> 3];
-    uint8_t mask = (uint8_t)(1u << (code & 7u));
-
-    *byte = value ? (uint8_t)(*byte | mask) : (uint8_t)(*byte & (uint8_t)~mask);
-}
 
 static void log_event(bool ext, uint8_t code, bool pressed)
 {
@@ -140,18 +162,37 @@ static void queue_push(bool pressed, uint8_t key)
 /* Trata uma tecla completa (codigo com ou sem prefixo, make ou break) */
 static void key_event(bool ext, uint8_t code, bool pressed)
 {
-    uint8_t key = (code < SET2_SIZE) ? (ext ? ext_map[code] : normal_map[code]) : 0u;
+    if (code >= SET2_SIZE)
+    {
+        return;
+    }
+    uint8_t *slot = &emitted[ext ? 1u : 0u][code];
+    uint8_t key;
 
-    if (key == 0u)
+    if (pressed)
     {
-        return;
+        key = ext ? ext_map[code] : normal_map[code];
+        if (key == 0u || *slot != 0u)
+        {
+            /* Tecla sem funcao, ou repeticao de uma ja pressionada */
+            return;
+        }
+        if (menu_nav_hook != NULL && menu_nav_hook() != 0)
+        {
+            key = menu_translate(key);
+        }
+        *slot = key;
     }
-    if (pressed == down_get(ext, code))
+    else
     {
-        /* Repeticao de uma tecla ja pressionada, ou soltura de uma que nao estava */
-        return;
+        key = *slot;
+        if (key == 0u)
+        {
+            /* Soltura de uma tecla que nao estava pressionada */
+            return;
+        }
+        *slot = 0u;
     }
-    down_set(ext, code, pressed);
     queue_push(pressed, key);
     log_event(ext, code, pressed);
     if (pressed)
@@ -209,7 +250,7 @@ void doom_kbd_reset(void)
     {
         for (unsigned code = 0; code < SET2_SIZE; code++)
         {
-            if (down_get(ext != 0u, (uint8_t)code))
+            if (emitted[ext][code] != 0u)
             {
                 key_event(ext != 0u, (uint8_t)code, false);
             }
@@ -265,6 +306,49 @@ void doom_kbd_poll(void)
 #else
 void doom_kbd_poll(void)
 {
+}
+#endif
+
+#ifndef DOOM_KBD_HOST_TEST
+/*
+ * Movimento por W A S D, uso por E e tiro por Espaco ou Ctrl: o jogo le key_up, key_down, key_strafeleft,
+ * key_straferight, key_use e key_fire (m_controls.c) em G_BuildTiccmd, e so ali. Elas passam a ser o ASCII que o
+ * decodificador ja entrega (as letras minusculas e ' ', que o Espaco e o Ctrl produzem), entao
+ * os menus e a digitacao de texto (Y e N, nomes de save, cheats) recebem as letras certas sem conflito. As setas
+ * esquerda e direita continuam girando (key_left e key_right) e todas as setas seguem navegando nos menus
+ * (key_menu_*); cima e baixo ficam sem funcao no jogo. I_InitInput roda depois do M_LoadDefaults, entao um
+ * default.cfg nao desfaz a troca.
+ */
+extern int key_up;
+extern int key_down;
+extern int key_strafeleft;
+extern int key_straferight;
+extern int key_use;
+extern int key_fire;
+extern void __real_I_InitInput(void);
+
+/* saveStringEnter (m_menu.c) vale 1 enquanto se digita o nome do save; menuactive vem do doomstat.h */
+extern int saveStringEnter;
+
+/*
+ * Nos menus W S A D e E navegam como as setas e o Enter (menu_translate), exceto na digitacao do nome de um save,
+ * onde sao letras. As confirmacoes Y e N e os atalhos de letra dos menus (N, O, L, Q...) nao mudam.
+ */
+static int menu_nav_active(void)
+{
+    return menuactive != 0 && saveStringEnter == 0;
+}
+
+void __wrap_I_InitInput(void)
+{
+    doom_kbd_set_menu_hook(menu_nav_active);
+    key_up = 'w';
+    key_down = 's';
+    key_strafeleft = 'a';
+    key_straferight = 'd';
+    key_use = 'e';
+    key_fire = ' ';
+    __real_I_InitInput();
 }
 #endif
 
