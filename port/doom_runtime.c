@@ -296,6 +296,21 @@ static void wait_ms(uint32_t ms)
     }
 }
 
+/* Inatividade: o jogo ficou idle_ms sem nenhum evento de teclado (port/doom_video.c) e recomeca no titulo */
+void doom_restart_idle(uint32_t idle_ms)
+{
+    if (idle_ms % 60000u < 1000u)
+    {
+        printf("[DOOM] Inatividade de %lu min: reiniciando o jogo\n", (unsigned long)(idle_ms / 60000u));
+    }
+    else
+    {
+        printf("[DOOM] Inatividade de %lu s: reiniciando o jogo\n", (unsigned long)(idle_ms / 1000u));
+    }
+    console_flush();
+    restart_program();
+}
+
 /* Quit Game do menu: o jogo recomeca na tela de titulo, sem recarregar nada */
 void __wrap_I_Quit(void)
 {

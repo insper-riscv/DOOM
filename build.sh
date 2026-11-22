@@ -126,6 +126,10 @@ if [ "${INTERACTIVE:-0}" = 1 ]; then
   # No modo interativo o Quit Game e o fim por erro reiniciam o programa (port/doom_runtime.c), com o .data
   # guardado em DOOM_DATA_BACKUP_ADDR
   PORT_DEFS="$PORT_DEFS -DDOOM_INTERACTIVE -DDOOM_DATA_BACKUP_ADDR=$DATA_BACKUP_ADDR"
+  # IDLE_MS: ms sem evento de teclado ate voltar ao titulo (padrao 900000, 15 min; port/doom_video.h)
+  if [ -n "${IDLE_MS:-}" ]; then
+    PORT_DEFS="$PORT_DEFS -DDOOM_IDLE_RESET_MS=${IDLE_MS}u"
+  fi
 fi
 # TESTKEYS=1 (so no alvo layout, no Spike): injeta F10 e Y (Quit Game) para testar o reinicio sem teclado
 if [ "${TESTKEYS:-0}" != 0 ]; then

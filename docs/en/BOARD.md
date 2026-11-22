@@ -197,11 +197,14 @@ On Spike (`TARGET=layout VIDEO=1`), the CRC-32 of the last frame of `-timedemo d
 
 ### 12.5. Game restart
 
-With `INTERACTIVE=1` the program has a clean restart: it restores `.data` from the copy taken at the start of `main` (`DOOM_DATA_BACKUP_ADDR`, `0x43800000`) and jumps to `_start`, which clears the bss and calls `main` again. The WAD and the binary are already in SDRAM and nothing is reloaded. Two paths lead to it.
+With `INTERACTIVE=1` the program has a clean restart: it restores `.data` from the copy taken at the start of `main` (`DOOM_DATA_BACKUP_ADDR`, `0x43800000`) and jumps to `_start`, which clears the bss and calls `main` again. The WAD and the binary are already in SDRAM and nothing is reloaded. Three paths lead to it.
 
 | Cause | UART message |
 | :--- | :--- |
 | Quit Game from the menu (`I_Quit` is wrapped with `--wrap`, because the original returns to the game over the already freed video) | `[DOOM] Quit Game: reiniciando o jogo (titulo e menu)` |
 | Program end by error (`I_Error`, `exit`), after 3 s | `[DOOM] fim do programa (codigo N): reiniciando em 3 s` |
+| Inactivity | `[DOOM] Inatividade de 15 min: reiniciando o jogo` |
 
-On Spike, `TESTKEYS=1 VIDEO=1 INTERACTIVE=1 TARGET=layout` injects F10 and Y (Quit Game) at frames 600 and 700 to test the restart without a keyboard.
+Inactivity counts, by the game clock (`DG_GetTicksMs`), the time without any keyboard byte (key pressed, released or repeated). After `DOOM_IDLE_RESET_MS` (15 min, or `IDLE_MS=N` in ms on `build.sh`), the game restarts if it is in a game, an open menu, an intermission or the finale. On the title screen and in the attract demo, with the menu closed, it does nothing. The count starts at the first frame of each boot, so it never fires during boot.
+
+On Spike, `IDLE_MS=20000 TESTKEYS=3 VIDEO=1 INTERACTIVE=1 TARGET=layout` opens the menu at frame 300 and presses a key at frame 900: the game restarts 20 s after the last key (at 16.6 s of clock, it restarts at 36.6 s) and not 20 s after the menu opened.

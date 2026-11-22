@@ -19,6 +19,14 @@
 #define DOOM_VCRC_FRAMES 32u
 #endif
 
+/* Tempo sem nenhum evento de teclado depois do qual o jogo volta ao titulo (modo interativo), em ms: 15 min */
+#ifndef DOOM_IDLE_RESET_MS
+#define DOOM_IDLE_RESET_MS (15u * 60u * 1000u)
+#endif
+
+/* Reinicia o programa por inatividade (port/doom_runtime.c, so DOOM_INTERACTIVE) */
+void doom_restart_idle(uint32_t idle_ms);
+
 /* Intervalo entre as linhas de acompanhamento na JTAG UART, em ms */
 #define DOOM_REPORT_MS 5000u
 
