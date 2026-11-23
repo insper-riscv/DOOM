@@ -22,11 +22,11 @@ case "$TARGET" in
     exit 1
     ;;
 esac
-RAM_LENGTH=${RAM_LENGTH:-0x04000000}
+RAM_LENGTH=${RAM_LENGTH:-0x3C00000}
 # CRC-32 do ultimo quadro do -timedemo demo1 (320x200 XRGB de 32 bits)
 EXPECTED_CRC32=${EXPECTED_CRC32:-67371a4f}
 
-spike --disable-dtb --isa=rv32im_zicsr_zicntr -m"$RAM_ORIGIN:$RAM_LENGTH" \
+spike --disable-dtb --isa=rv32im_zicsr_zicntr -m"0x1000:0x3FF000,$RAM_ORIGIN:$RAM_LENGTH" \
   "$OUT/doom.elf" > "$OUT/spike.out" 2> "$OUT/spike.err" || echo "spike rc=$?"
 tail -n 3 "$OUT/spike.out"
 tail -n 5 "$OUT/spike.err"

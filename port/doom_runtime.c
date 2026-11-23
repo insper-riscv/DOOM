@@ -36,10 +36,15 @@
 #ifdef DOOM_MENU
 #include "doom_menu.h"
 #include "wad_table.h"
+#include "doom_wad_src.h"
 #endif
 
 #ifdef DOOM_CONSOLE_UART
 #include "memory_map.h"
+#endif
+
+#if defined(DOOM_SD_LOAD) || defined(DOOM_SD_DEMAND)
+#include "doom_sd.h"
 #endif
 
 /* Argumentos do DOOM; -timedemo roda a demo sem relogio de parede */
@@ -81,10 +86,30 @@ static void uart_put(char c)
     *UART_TXDATA = (uint8_t)c;
 }
 
+/*
+ * Copia circular do console na SDRAM (8 KiB em DOOM_LOG_ADDR; palavra 0 = indice de escrita, texto a partir do byte
+ * 16), para ler pelo dump-ram o que o jogo disse quando ninguem tinha a UART aberta.
+ */
+#ifndef DOOM_LOG_ADDR
+#define DOOM_LOG_ADDR 0x43BF0000u
+#endif
+#define DOOM_LOG_BYTES 8176u
+
+static void log_put(char c)
+{
+    volatile uint32_t *head = (volatile uint32_t *)(uintptr_t)DOOM_LOG_ADDR;
+    volatile char *text = (volatile char *)(uintptr_t)(DOOM_LOG_ADDR + 16u);
+    uint32_t i = *head;
+
+    text[i % DOOM_LOG_BYTES] = c;
+    *head = i + 1u;
+}
+
 /* putc do stdout e do stderr: direto na UART */
 static int console_putc(char c, FILE *f)
 {
     (void)f;
+    log_put(c);
     uart_put(c);
     return (unsigned char)c;
 }
@@ -374,6 +399,55 @@ void _exit(int code)
 #endif
 }
 
+#if defined(DOOM_SD_LOAD) || defined(DOOM_SD_DEMAND)
+
+/*
+ * Carga das WADs pelo cartao microSD (port/doom_sd.c), no inicio do main e antes do menu. DOOM_SD_LOAD copia a imagem
+ * do cartao para a SDRAM (DOOM_WAD_ADDR, DOOM_WAD_SIZE do build); DOOM_SD_DEMAND le o indice do cartao e deixa o
+ * backend de WAD ler os blocos sob demanda. Sem cartao, ou com um cartao que nao e a imagem deste build, o jogo
+ * segue pelo caminho da JTAG (a WAD ja na SDRAM por `load-ram --wad`), como antes.
+ */
+static void sd_boot(void)
+{
+    uint32_t t0 = DG_GetTicksMs();
+    int status = doom_sd_init();
+
+    if (status == DOOM_SD_OK)
+    {
+#ifdef DOOM_SD_DEMAND
+        status = doom_sd_load_index();
+#else
+        status = doom_sd_load_image(DOOM_WAD_ADDR, DOOM_WAD_SIZE);
+#endif
+    }
+    if (status == DOOM_SD_OK)
+    {
+        printf("[SD] pronto em %u ms\n", (unsigned)(DG_GetTicksMs() - t0));
+    }
+    else
+    {
+        printf("[SD] %s: usando a WAD que ja esta na SDRAM (JTAG)\n", doom_sd_status_text(status));
+#ifdef DOOM_SD_DEMAND
+        doom_sd_use_static_table();
+#ifdef DOOM_SD_ONLY
+        /* ONDEMAND=1: a tabela tem deslocamentos no cartao, nao enderecos da SDRAM; sem cartao nao ha jogo */
+#ifdef DOOM_SD_FATFS
+        printf("[SD] build so com cartao (SDFS=fatfs): insira um FAT32 com DOOM.WAD, DOOM2.WAD, PLUTONIA.WAD ou TNT.WAD e reinicie\n");
+#else
+        printf("[SD] build so com cartao (ONDEMAND=1): insira o cartao gravado pelo sdwrite e reinicie\n");
+#endif
+        console_flush();
+        for (;;)
+        {
+        }
+#endif
+#endif
+    }
+    console_flush();
+}
+
+#endif
+
 #ifdef DOOM_MENU
 
 /*
@@ -384,7 +458,7 @@ void _exit(int code)
  */
 int main(void)
 {
-    static char *args[8];
+    static char *args[10];
     static char warp_text[8];
     struct doom_menu_choice choice;
     int argc = 0;
@@ -392,7 +466,23 @@ int main(void)
     data_snapshot();
     result_clear();
     doom_measure_init();
+#if defined(DOOM_SD_LOAD) || defined(DOOM_SD_DEMAND)
+    sd_boot();
+#endif
+#ifdef DOOM_MENU_AUTO
+#ifndef DOOM_MENU_AUTO_GAME
+#define DOOM_MENU_AUTO_GAME 0
+#endif
+#ifndef DOOM_MENU_AUTO_DEMO
+#define DOOM_MENU_AUTO_DEMO "demo1"
+#endif
+    /* Medicao pelo cartao (MENU_AUTO=1): sem escolha, abre o primeiro jogo e roda o demo1 sem esperar o relogio */
+    choice.iwad = doom_menu_games[DOOM_MENU_AUTO_GAME].iwad;
+    choice.pwad = -1;
+    choice.map = 0;
+#else
     doom_menu_run(&choice);
+#endif
     args[argc++] = (char *)"doom";
     args[argc++] = (char *)"-iwad";
     args[argc++] = (char *)doom_wad_table[choice.iwad].name;
@@ -404,6 +494,10 @@ int main(void)
         args[argc++] = (char *)"-warp";
         args[argc++] = warp_text;
     }
+#ifdef DOOM_MENU_AUTO
+    args[argc++] = (char *)"-timedemo";
+    args[argc++] = (char *)DOOM_MENU_AUTO_DEMO;
+#endif
     printf("[DOOM] menu: %s%s%s\n", doom_wad_table[choice.iwad].name, choice.pwad >= 0 ? " + " : "",
            choice.pwad >= 0 ? doom_wad_table[choice.pwad].name : "");
     console_flush();
@@ -429,6 +523,9 @@ int main(void)
 #endif
     result_clear();
     doom_measure_init();
+#if defined(DOOM_SD_LOAD) || defined(DOOM_SD_DEMAND)
+    sd_boot();
+#endif
     doomgeneric_Create((int)(sizeof(args) / sizeof(args[0])), args);
     for (;;)
     {

@@ -45,6 +45,9 @@ struct doom_menu_choice
     int map;
 };
 
+/* Termina a tela de carga: chamado quando o jogo entrega o primeiro quadro */
+void doom_menu_loading_end(void);
+
 /* Mostra o menu, espera a escolha e a devolve em *choice */
 void doom_menu_run(struct doom_menu_choice *choice);
 

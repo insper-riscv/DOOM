@@ -50,6 +50,45 @@ esac
 # padrao do scripts/layout.sh. WAD_SET escolhe os jogos (padrao "doom doom2 plutonia master"). Pede VIDEO=1 e
 # INTERACTIVE=1, porque o menu usa o video e o teclado e o jogo volta a ele ao reiniciar.
 WAD_FILE=doom1.wad
+# SD=load (copia o payload do cartao microSD para a SDRAM no inicio) ou SD=demand (le os blocos do cartao a cada
+# W_ReadLump, pede MENU=1): so no alvo board; sem cartao o jogo cai no caminho da JTAG (SD=load) ou avisa (SD=demand)
+case "${SD:-}" in
+  "" | load) ;;
+  demand)
+    if [ "${MENU:-0}" != 1 ]; then
+      echo "SD=demand pede MENU=1 (o indice do cartao alimenta o menu)" >&2
+      exit 1
+    fi
+    ;;
+  *)
+    echo "SD invalido: ${SD} (load ou demand)" >&2
+    exit 1
+    ;;
+esac
+# SDFS=raw (padrao, sdcard_direct_mapped): o cartao guarda o wads.bin cru, gravado pelo scripts/sdwrite.py, e o jogo o le
+# por setores. SDFS=fatfs (sdcard_FatFs): o cartao e um FAT32 comum com os arquivos das WADs (DOOM.WAD, DOOM2.WAD,
+# PLUTONIA.WAD, TNT.WAD e a pasta MASTER), lido pelo FatFs (fatfs/, baixado pelo fetch.sh): sem wads.sh nem sdwrite.py.
+# Pede SD=demand e MENU=1; as WADs ficam so no cartao (como ONDEMAND=1).
+SDFS=${SDFS:-raw}
+case "$SDFS" in
+  raw) ;;
+  fatfs)
+    if [ "${SD:-}" != demand ] || [ "${MENU:-0}" != 1 ]; then
+      echo "SDFS=fatfs pede SD=demand e MENU=1" >&2
+      exit 1
+    fi
+    ONDEMAND=1
+    export ONDEMAND
+    ;;
+  *)
+    echo "SDFS invalido: $SDFS (raw ou fatfs)" >&2
+    exit 1
+    ;;
+esac
+if [ -n "${SD:-}" ] && [ "$TARGET" != board ]; then
+  echo "SD=${SD} pede TARGET=board (o periferico SD so existe na placa)" >&2
+  exit 1
+fi
 if [ "${MENU:-0}" = 1 ]; then
   if [ "$TARGET" = spike ]; then
     echo "MENU=1 pede TARGET=layout ou board (o mapa da SDRAM)" >&2
@@ -60,12 +99,26 @@ if [ "${MENU:-0}" = 1 ]; then
     exit 1
   fi
   mkdir -p "$OUT"
-  sh scripts/wads.sh "$OUT"
-  . "$OUT/wads.env"
-  WAD_FILE="$OUT/wads.bin"
+  # ONDEMAND=1 (com SD=demand): as WADs ficam so no cartao, todas, sem o limite da SDRAM; wads.sh empacota com os
+  # deslocamentos e nao ha como cair na JTAG. Sem ONDEMAND, o conjunto tem de caber na SDRAM e o fallback vale.
+  if [ "${ONDEMAND:-0}" = 1 ] && [ "${SD:-}" != demand ]; then
+    echo "ONDEMAND=1 pede SD=demand" >&2
+    exit 1
+  fi
+  export ONDEMAND
+  if [ "$SDFS" = fatfs ]; then
+    # Sem WADs no build: o mapa da SDRAM e a tabela vazia vem do scripts/fatfs_layout.sh, a lista de jogos so do cartao
+    sh scripts/fatfs_layout.sh "$OUT"
+    . "$OUT/wads.env"
+    WAD_FILE=/dev/null
+  else
+    sh scripts/wads.sh "$OUT"
+    . "$OUT/wads.env"
+    WAD_FILE="$OUT/wads.bin"
+  fi
 fi
 
-if [ ! -f "$DG/Makefile" ] || [ ! -f "$WAD_FILE" ]; then
+if [ ! -f "$DG/Makefile" ] || [ ! -e "$WAD_FILE" ]; then
   echo "doomgeneric/ ou $WAD_FILE ausente: rode fetch.sh" >&2
   exit 1
 fi
@@ -118,7 +171,7 @@ fi
 # VSYNC=0 tira a espera pelo apagamento vertical, VCRC_FRAMES=N muda quantos quadros guardam o CRC (padrao 32);
 # com MEASURE=1 os dois valem 0 (a medicao de CPI nao pode incluir espera nem CRC), salvo se definidos.
 # INTERACTIVE=1: titulo, menu e jogo (sem -timedemo), com o demo de atracao do DOOM
-DOOM_SRC_PORT="doom_platform doom_runtime doom_wad_mem"
+DOOM_SRC_PORT="doom_platform doom_runtime doom_wad_mem doom_fastmem doom_logo"
 if [ "${VIDEO:-0}" = 1 ]; then
   if [ "$TARGET" = spike ]; then
     echo "VIDEO=1 pede TARGET=layout ou board (o mapa da SDRAM)" >&2
@@ -148,8 +201,29 @@ if [ "${VIDEO:-0}" = 1 ]; then
     PORT_DEFS="$PORT_DEFS -DDOOM_VCRC_FRAMES=${VCRC_FRAMES}u"
   fi
 fi
+case "${SD:-}" in
+  load)
+    PORT_DEFS="$PORT_DEFS -DDOOM_SD_LOAD"
+    DOOM_SRC_PORT="$DOOM_SRC_PORT doom_sd"
+    ;;
+  demand)
+    PORT_DEFS="$PORT_DEFS -DDOOM_SD_DEMAND"
+    if [ "${ONDEMAND:-0}" = 1 ]; then
+      PORT_DEFS="$PORT_DEFS -DDOOM_SD_ONLY"
+    fi
+    DOOM_SRC_PORT="$DOOM_SRC_PORT doom_sd"
+    if [ "$SDFS" = fatfs ]; then
+      PORT_DEFS="$PORT_DEFS -DDOOM_SD_FATFS -Ifatfs/source"
+      DOOM_SRC_PORT="$DOOM_SRC_PORT doom_fatfs doom_diskio"
+    fi
+    ;;
+esac
 if [ "${MENU:-0}" = 1 ]; then
   PORT_DEFS="$PORT_DEFS -DDOOM_MENU -I$OUT"
+  # MENU_AUTO=1: sem escolha no menu, abre o primeiro jogo e roda o -timedemo demo1 (medicao do fps pelo cartao)
+  if [ "${MENU_AUTO:-0}" = 1 ]; then
+    PORT_DEFS="$PORT_DEFS -DDOOM_MENU_AUTO -DDOOM_MENU_AUTO_GAME=${MENU_AUTO_GAME:-0} -DDOOM_MENU_AUTO_DEMO=\"${MENU_AUTO_DEMO:-demo1}\""
+  fi
   DOOM_SRC_PORT="$DOOM_SRC_PORT doom_menu"
   # MENU_SCRIPT roda um roteiro de teclas no lugar do teclado (u d l r mudam a escolha, e escolhe, b volta, p guarda
   # a tela) e termina na escolha: so para conferir o menu no Spike (TARGET=layout), com as telas em $OUT/spike.out
@@ -169,6 +243,12 @@ if [ "${INTERACTIVE:-0}" = 1 ]; then
   if [ -n "${IDLE_MS:-}" ]; then
     PORT_DEFS="$PORT_DEFS -DDOOM_IDLE_RESET_MS=${IDLE_MS}u"
   fi
+fi
+# HUD=1 desenha FPS e MAX no canto superior direito (port/doom_video.c); padrao ligado no modo interativo com video,
+# e desligado nas medicoes, que nao podem ter o desenho no quadro nem nas instrucoes
+if [ "${VIDEO:-0}" = 1 ] && { [ "${HUD:-${INTERACTIVE:-0}}" = force ] || { [ "${HUD:-${INTERACTIVE:-0}}" = 1 ] && [ "${MEASURE:-0}" != 1 ]; }; }; then
+  PORT_DEFS="$PORT_DEFS -DDOOM_FPS_HUD"
+  # o HUD escreve direto no DG_ScreenBuffer, que e o proprio buffer do jogo (patch i_video.c): sem copia do quadro
 fi
 # TESTKEYS=1 (so no alvo layout, no Spike): injeta F10 e Y (Quit Game) para testar o reinicio sem teclado
 if [ "${TESTKEYS:-0}" != 0 ]; then
@@ -192,6 +272,17 @@ for f in $DOOM_SRC_PORT; do
   $CC --specs=picolibc.specs $ARCH $OPT -std=gnu23 -Wall -Wextra -Werror $DEFS $PORT_DEFS \
     -I"$DG" -Iport -c "port/$f.c" -o "$OUT/obj/$f.o"
 done
+
+# FatFs (SDFS=fatfs): so o ff.c; o ffconf.h e o da porta (port/ffconf.h) e o fetch.sh nao copia o do FatFs. Codigo de
+# terceiros: sem os avisos do projeto
+if [ "$SDFS" = fatfs ]; then
+  if [ ! -f fatfs/source/ff.c ]; then
+    echo "fatfs/source/ff.c ausente: rode fetch.sh" >&2
+    exit 1
+  fi
+  $CC --specs=picolibc.specs $ARCH $OPT -std=gnu99 -w -ffunction-sections -Iport -Ifatfs/source \
+    -c fatfs/source/ff.c -o "$OUT/obj/ff.o"
+fi
 
 # Relogio da plataforma: a fonte e a do repositorio Insper-RISC-V, copiada pelo build
 if [ "$TARGET" = board ]; then

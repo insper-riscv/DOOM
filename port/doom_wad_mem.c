@@ -12,6 +12,8 @@
  *    simbolos _binary_doom1_wad_start e _binary_doom1_wad_end a delimitam;
  *  - placa: DOOM_WAD_ADDR e DOOM_WAD_SIZE (-D) apontam para a regiao da SDRAM
  *    onde a JTAG deixou a WAD;
+ *  - cartao SD (DOOM_SD_DEMAND, doom_sd.h): a entrada da tabela guarda o setor inicial da WAD no cartao e cada leitura
+ *    vira leitura de blocos do cartao, sem copia previa para a SDRAM; sem cartao vale a tabela fixa, como acima;
  *  - menu (DOOM_MENU): varias WADs na SDRAM, cada uma no endereco da tabela wad_table.h que
  *    scripts/wads.sh gera; o jogo as abre pelo nome (doom2.wad, plutonia.wad, attack.wad, ...),
  *    sem diferenciar maiusculas de minusculas e sem olhar a pasta.
@@ -28,6 +30,7 @@
 #ifdef DOOM_MENU
 
 #include "wad_table.h"
+#include "doom_wad_src.h"
 
 /* Uma WAD aberta: o w_file.c ve so o inicio (wad_file_t); a entrada da tabela vem logo depois */
 typedef struct
@@ -117,6 +120,14 @@ static size_t mem_wad_read(wad_file_t *wad, unsigned int offset, void *buffer, s
     {
         buffer_len = entry->size - offset;
     }
+#ifdef DOOM_SD_DEMAND
+    if (doom_sd_wads_on_card())
+    {
+        /* entry->addr e o setor inicial da WAD no cartao cru (cache de 8 setores no driver) ou, com FatFs, o indice
+           da WAD na tabela: doom_wad_read escolhe o caminho */
+        return doom_wad_read(entry->addr, offset, buffer, buffer_len);
+    }
+#endif
     memcpy(buffer, (const uint8_t *)(uintptr_t)entry->addr + offset, buffer_len);
     return buffer_len;
 }

@@ -1,9 +1,9 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
-# Baixa a doomgeneric (commit fixado) em doomgeneric/, o runtime da plataforma doom
+# Baixa a doomgeneric (commit fixado) em doomgeneric/, o FatFs R0.15a (SHA-256 fixado, forma sdcard_FatFs) em fatfs/, o runtime da plataforma doom
 # (commit fixado do Insper-RISC-V) em Insper-RISC-V/ e, se voce nao indicar as suas WADs, a doom1.wad
 # shareware v1.9 em doom1.wad, conferindo o SHA-256 e o SHA-1 da WAD.
-# Precisa de git, curl e sha256sum no host.
+# Precisa de git, curl, unzip e sha256sum no host.
 #
 # Uso: ./fetch.sh [--wad-dir PASTA]
 #   --wad-dir PASTA  usa as WADs que estao em PASTA (doom.wad, doom2.wad, plutonia.wad, tnt.wad e a pasta do Master
@@ -46,7 +46,12 @@ WAD_URL="https://raw.githubusercontent.com/Doom-Utils/shareware-collection/maste
 if [ ! -d doomgeneric/.git ]; then
   git clone -q https://github.com/ozkl/doomgeneric.git doomgeneric
 fi
-git -C doomgeneric checkout -q "$DG_COMMIT"
+git -C doomgeneric checkout -q -f "$DG_COMMIT"
+# Ajustes de velocidade (laços de desenho e noipa nas funcoes do --wrap), sem mudar a imagem: patches/doomgeneric-speed.patch
+git -C doomgeneric apply ../patches/doomgeneric-speed.patch
+# Segunda rodada (menos ciclos por quadro, imagem identica): o jogo desenha direto no DG_ScreenBuffer (sem a copia
+# do I_FinishUpdate) e R_DrawColumn/R_DrawFuzzColumn mais curtos: patches/doomgeneric-speed2.patch
+git -C doomgeneric apply ../patches/doomgeneric-speed2.patch
 
 # Runtime da plataforma doom (Apache-2.0) do Insper-RISC-V, em commit fixado: so a pasta
 # src/cyclone-v/doom/runtime, de onde o build copia o doom_clock.c e le o memory_map.h
@@ -56,6 +61,21 @@ if [ ! -d Insper-RISC-V/.git ]; then
 fi
 git -C Insper-RISC-V sparse-checkout set --no-cone /src/cyclone-v/doom/runtime
 git -C Insper-RISC-V checkout -q "$IR_COMMIT"
+
+# FatFs R0.15a (ChaN, licenca permissiva de 1 clausula, ver fatfs/LICENSE.txt) para a forma sdcard_FatFs (SDFS=fatfs no
+# build.sh): o zip da distribuicao oficial, com o SHA-256 conferido, extraido em fatfs/ sem o ffconf.h (o build usa o da
+# porta, port/ffconf.h). Precisa de curl, sha256sum e unzip no host.
+FATFS_URL="https://elm-chan.org/fsw/ff/arc/ff15a.zip"
+FATFS_SHA256=74737b1cafa1a67a3f722dd0d1a44767c5b54d37b6300ad3825a904cbe88fc3c
+if [ ! -f fatfs/source/ff.c ]; then
+  command -v unzip > /dev/null 2>&1 || { echo "unzip ausente (precisa dele para o FatFs)" >&2; exit 1; }
+  rm -rf fatfs fatfs.zip
+  curl -fsSL -o fatfs.zip "$FATFS_URL"
+  echo "$FATFS_SHA256  fatfs.zip" | sha256sum -c -
+  mkdir fatfs
+  unzip -q fatfs.zip -d fatfs -x 'source/ffconf.h' 'documents/*'
+  rm -f fatfs.zip
+fi
 
 if [ -n "$WAD_DIR_ARG" ]; then
   # As WADs do usuario: confere que a pasta existe, guarda o caminho e lista o que achou

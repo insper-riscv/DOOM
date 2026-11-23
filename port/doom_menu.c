@@ -21,14 +21,19 @@
 
 #include "doom_kbd.h"
 #include "doom_menu.h"
+#if defined(DOOM_SD_LOAD) || defined(DOOM_SD_DEMAND)
+#include "doom_sd.h"
+#endif
+#include "doom_logo.h"
 #include "doom_video.h"
 #include "wad_table.h"
+#include "doom_wad_src.h"
 
 #define SCREEN_W 320
 #define SCREEN_H 200
 
 /* Mapas do COLORMAP: 0 e a luz cheia e 31 a mais escura */
-#define MAP_BACKGROUND 19
+#define MAP_BACKGROUND 8
 #define MAP_PANEL 14
 
 /* Primeira e ultima letras da fonte (STCFN033 e STCFN095, de ! a _) */
@@ -53,6 +58,8 @@ static const uint8_t *wad_base;
 static const uint8_t *lump_playpal;
 static const uint8_t *lump_colormap;
 static const uint8_t *lump_title;
+static const uint8_t *lump_logo;
+static const uint8_t *lump_flat;
 static const uint8_t *lump_skull[2];
 static const uint8_t *glyph[FONT_LAST + 1];
 
@@ -80,9 +87,76 @@ static uint32_t rd32(const uint8_t *p)
     return rd16(p) | (rd16(p + 2) << 16);
 }
 
+#ifdef DOOM_SD_DEMAND
+/*
+ * Com as WADs no cartao (modo sob demanda) nao ha imagem na SDRAM: o diretorio da WAD do menu e lido do cartao para
+ * menu_dir, e cada lump que o menu usa (paleta, mapa de cores, titulo, caveiras e fonte, uns 90 KB) e lido uma vez para
+ * a arena menu_arena; os ponteiros do menu apontam para dentro dela, como apontavam para a imagem.
+ */
+#define MENU_DIR_MAX 4096u
+#define MENU_ARENA_BYTES (160u * 1024u)
+static uint32_t menu_wad_sector;
+static uint32_t menu_lumps;
+static uint32_t menu_arena_used;
+static uint8_t menu_dir[MENU_DIR_MAX * 16u] __attribute__((aligned(4)));
+static uint8_t menu_arena[MENU_ARENA_BYTES] __attribute__((aligned(4)));
+
+/* Le o cabecalho e o diretorio da WAD que comeca em `sector`; 1 se deu certo */
+static int card_wad_open(uint32_t sector)
+{
+    uint8_t head[12];
+
+    menu_wad_sector = sector;
+    menu_arena_used = 0;
+    menu_lumps = 0;
+    if (doom_wad_read(sector, 0, head, sizeof(head)) != sizeof(head))
+    {
+        return 0;
+    }
+    menu_lumps = rd32(head + 4);
+    if (menu_lumps == 0u || menu_lumps > MENU_DIR_MAX ||
+        doom_wad_read(sector, rd32(head + 8), menu_dir, menu_lumps * 16u) != menu_lumps * 16u)
+    {
+        menu_lumps = 0;
+        return 0;
+    }
+    return 1;
+}
+
+/* Acha o lump no diretorio lido, le seu conteudo para a arena e devolve o ponteiro; NULL se falta ou nao cabe */
+static const uint8_t *find_lump_card(const char *name)
+{
+    for (uint32_t i = 0; i < menu_lumps; i++)
+    {
+        const uint8_t *entry = menu_dir + 16u * i;
+
+        if (strncmp((const char *)(entry + 8), name, 8) == 0)
+        {
+            uint32_t size = rd32(entry + 4);
+            uint8_t *at = menu_arena + menu_arena_used;
+
+            if (size > MENU_ARENA_BYTES - menu_arena_used ||
+                doom_wad_read(menu_wad_sector, rd32(entry), at, size) != size)
+            {
+                return NULL;
+            }
+            menu_arena_used = (menu_arena_used + size + 3u) & ~3u;
+            return at;
+        }
+    }
+    return NULL;
+}
+#endif /* DOOM_SD_DEMAND */
+
 /* Acha um lump pelo nome no diretorio da WAD; NULL se nao existe */
 static const uint8_t *find_lump(const char *name)
 {
+#ifdef DOOM_SD_DEMAND
+    if (doom_sd_wads_on_card())
+    {
+        return find_lump_card(name);
+    }
+#endif
     uint32_t count = rd32(wad_base + 4);
     const uint8_t *dir = wad_base + rd32(wad_base + 8);
 
@@ -144,10 +218,30 @@ static int assets_init(const struct doom_wad_entry *wad)
 {
     char name[9];
 
-    wad_base = (const uint8_t *)(uintptr_t)wad->addr;
+#ifdef DOOM_SD_DEMAND
+    if (doom_sd_wads_on_card())
+    {
+        if (!card_wad_open(wad->addr))
+        {
+            return 0;
+        }
+    }
+    else
+#endif
+    {
+        wad_base = (const uint8_t *)(uintptr_t)wad->addr;
+    }
     lump_playpal = find_lump("PLAYPAL");
     lump_colormap = find_lump("COLORMAP");
     lump_title = find_lump("TITLEPIC");
+    lump_logo = find_lump("M_DOOM");
+    /* Fundo: um piso do proprio jogo ladrilhado, o primeiro desta lista que a WAD tem (todas tem algum) */
+    static const char *const flat_names[] = {"FLOOR7_2", "FLAT5_4", "FLOOR4_8", "FLOOR0_1", "FLAT1", "CEIL3_5", "FLOOR5_1"};
+
+    for (unsigned i = 0; i < sizeof(flat_names) / sizeof(flat_names[0]) && lump_flat == NULL; i++)
+    {
+        lump_flat = find_lump(flat_names[i]);
+    }
     lump_skull[0] = find_lump("M_SKULL1");
     lump_skull[1] = find_lump("M_SKULL2");
     if (lump_playpal == NULL || lump_colormap == NULL)
@@ -167,6 +261,7 @@ static int assets_init(const struct doom_wad_entry *wad)
         map_gray[i] = nearest_gray(luma(i) * 3 / 2 + 120);
         map_dim[i] = nearest_gray(luma(i) * 3 / 4 + 60);
     }
+    doom_logo_set_palette(palette12);
     return 1;
 }
 
@@ -279,13 +374,36 @@ static void shade_rect(int x0, int y0, int x1, int y1, int map_index)
     }
 }
 
-/* Fundo: a tela de titulo escurecida (o logo do DOOM ja esta nela), ou preto se a WAD nao tem */
+/* Fundo: um piso do DOOM (64x64) ladrilhado e escurecido, que deixa o logo e os itens legiveis; preto se a WAD nao traz nenhum */
 static void draw_background(void)
 {
     memset(screen, 0, sizeof(screen));
-    if (lump_title != NULL)
+    if (lump_flat != NULL && lump_colormap != NULL)
     {
-        draw_patch(lump_title, 0, 0, 1, lump_colormap + 256 * MAP_BACKGROUND);
+        const uint8_t *map = lump_colormap + 256 * MAP_BACKGROUND;
+
+        for (int y = 0; y < SCREEN_H; y++)
+        {
+            for (int x = 0; x < SCREEN_W; x++)
+            {
+                screen[y * SCREEN_W + x] = map[lump_flat[(y & 63) * 64 + (x & 63)]];
+            }
+        }
+    }
+}
+
+/* O logo do Insper em vermelho sangue, no canto superior esquerdo (o FPS do jogo fica no direito) */
+static void draw_insper_logo(void)
+{
+    doom_logo_draw(screen, SCREEN_W, 2, 2);
+}
+
+/* O logo "DOOM" do menu original, na mesma posicao (94, 2) */
+static void draw_logo(void)
+{
+    if (lump_logo != NULL)
+    {
+        draw_patch(lump_logo, 94, 2, 1, NULL);
     }
 }
 
@@ -304,25 +422,23 @@ static void draw_help(const char *text)
     draw_text_centered(text, SCREEN_H - 11, 1, map_dim);
 }
 
-/* Pagina dos jogos: um item por jogo, com o titulo grande e a descricao embaixo */
+/* Pagina dos jogos, no desenho do menu principal do DOOM: o logo no alto, os itens na mesma coluna e a caveira que pisca
+ * ao lado do escolhido. Em vez de New Game, Options e os outros, cada item e um jogo. */
 static void draw_games(int selected, int blink)
 {
+    const int item_x = 72;
+    const int item_y = 64;
+    const int line = 16;
+
     draw_background();
-    shade_rect(20, 6, SCREEN_W - 20, SCREEN_H - 18, MAP_PANEL);
-    draw_text_centered("CHOOSE YOUR GAME", 12, 2, map_gray);
+    draw_logo();
+    draw_insper_logo();
     for (int i = 0; i < DOOM_MENU_GAME_COUNT; i++)
     {
-        int y = 42 + 34 * i;
-        const uint8_t *map = (i == selected) ? NULL : map_gray;
-        int x = (SCREEN_W - text_width(doom_menu_games[i].title, 2)) / 2;
-
-        draw_text(doom_menu_games[i].title, x, y, 2, map);
-        draw_text_centered(doom_menu_games[i].subtitle, y + 18, 1, map_dim);
-        if (i == selected)
-        {
-            draw_skull(x - 38, y - 8, blink);
-        }
+        draw_text(doom_menu_games[i].title, item_x, item_y + line * i, 2, NULL);
     }
+    draw_skull(item_x - 32, item_y + line * selected - 5, blink);
+    draw_text_centered(doom_menu_games[selected].subtitle, SCREEN_H - 26, 1, map_gray);
     draw_help("UP DOWN OR W S MOVE   ENTER CHOOSES");
 }
 
@@ -332,14 +448,16 @@ static void draw_masters(int selected, int blink)
     char label[16];
 
     draw_background();
-    shade_rect(20, 6, SCREEN_W - 20, SCREEN_H - 18, MAP_PANEL);
-    draw_text_centered("MASTER LEVELS", 12, 2, map_gray);
+    draw_logo();
+    draw_insper_logo();
+    shade_rect(28, 44, SCREEN_W - 28, SCREEN_H - 18, MAP_PANEL);
+    draw_text_centered("MASTER LEVELS", 46, 2, NULL);
     for (int i = 0; i < DOOM_MENU_MASTER_COUNT; i++)
     {
         int col = i / MASTER_ROWS;
         int row = i % MASTER_ROWS;
         int x = 46 + col * 146;
-        int y = 46 + row * 13;
+        int y = 70 + row * 11;
         const uint8_t *map = (i == selected) ? NULL : map_gray;
 
         draw_text(doom_menu_masters[i].title, x, y, 1, map);
@@ -457,6 +575,108 @@ static enum menu_action action_of(int key)
     }
 }
 
+
+/*
+ * Tela de carga: depois da escolha, o jogo leva alguns segundos lendo as texturas e os sprites da fase (do cartao SD,
+ * no modo sob demanda) antes do primeiro quadro, e a tela ficaria parada no menu. Esta tela mostra o nome do que esta
+ * abrindo, um bloco que anda e quantos MB ja vieram do cartao, e some quando o jogo desenha o primeiro quadro.
+ */
+static int loading_active;
+static char loading_name[48];
+static uint32_t loading_base;
+static uint32_t loading_last;
+
+/* Repinta o retangulo [x0, x1) x [y0, y1) com o fundo (o piso ladrilhado) */
+static void loading_bg_rect(int x0, int y0, int x1, int y1)
+{
+    const uint8_t *map = lump_colormap + 256 * MAP_BACKGROUND;
+
+    for (int y = y0; y < y1; y++)
+    {
+        for (int x = x0; x < x1; x++)
+        {
+            screen[y * SCREEN_W + x] = (lump_flat != NULL) ? map[lump_flat[(y & 63) * 64 + (x & 63)]] : 0u;
+        }
+    }
+}
+
+/* A parte que muda: a barra com o bloco que anda e o contador de MB lidos */
+static void draw_loading_dynamic(uint32_t blocks)
+{
+    char text[40];
+    uint32_t tenths = (blocks * 10u) / 2048u;
+    uint8_t frame_color = nearest_gray(70);
+    uint8_t fill_color = nearest_gray(235);
+    int block_x = 62 + (int)((blocks / 24u) % 150u);
+
+    loading_bg_rect(40, 126, 280, 172);
+    for (int x = 60; x < 260; x++)
+    {
+        screen[138 * SCREEN_W + x] = frame_color;
+        screen[149 * SCREEN_W + x] = frame_color;
+    }
+    for (int y = 138; y < 150; y++)
+    {
+        screen[y * SCREEN_W + 60] = frame_color;
+        screen[y * SCREEN_W + 259] = frame_color;
+    }
+    for (int y = 140; y < 148; y++)
+    {
+        for (int x = block_x; x < block_x + 46; x++)
+        {
+            screen[y * SCREEN_W + x] = fill_color;
+        }
+    }
+    snprintf(text, sizeof(text), "READING SD CARD  %u.%u MB", (unsigned)(tenths / 10u), (unsigned)(tenths % 10u));
+    draw_text_centered(text, 156, 1, map_gray);
+    present();
+}
+
+#if defined(DOOM_SD_LOAD) || defined(DOOM_SD_DEMAND)
+static void loading_tick(uint32_t blocks)
+{
+    if (loading_active != 0 && blocks - loading_last >= 48u)
+    {
+        loading_last = blocks;
+        draw_loading_dynamic(blocks - loading_base);
+    }
+}
+#endif
+
+/* Desenha a tela de carga de `name` (a parte fixa) e liga o acompanhamento da leitura do cartao */
+static void loading_begin(const char *name)
+{
+    int scale = (text_width(name, 2) <= SCREEN_W - 24) ? 2 : 1;
+
+    snprintf(loading_name, sizeof(loading_name), "%s", name);
+    draw_background();
+    draw_logo();
+    draw_insper_logo();
+    draw_text_centered("LOADING", 76, 2, NULL);
+    draw_text_centered(loading_name, 100, scale, map_gray);
+    loading_active = 1;
+#if defined(DOOM_SD_LOAD) || defined(DOOM_SD_DEMAND)
+    loading_base = doom_sd_blocks_read();
+    loading_last = loading_base;
+    doom_sd_progress_cb = loading_tick;
+#else
+    loading_base = 0u;
+    loading_last = 0u;
+#endif
+    draw_loading_dynamic(0u);
+#ifdef DOOM_MENU_DUMP
+    doom_video_snapshot(screen, palette12);
+#endif
+}
+
+void doom_menu_loading_end(void)
+{
+    loading_active = 0;
+#if defined(DOOM_SD_LOAD) || defined(DOOM_SD_DEMAND)
+    doom_sd_progress_cb = NULL;
+#endif
+}
+
 void doom_menu_run(struct doom_menu_choice *choice)
 {
     int page = 0;
@@ -530,6 +750,7 @@ void doom_menu_run(struct doom_menu_choice *choice)
                     choice->iwad = doom_menu_games[game].iwad;
                     choice->pwad = -1;
                     choice->map = 0;
+                    loading_begin(doom_menu_games[game].title);
                     return;
                 }
             }
@@ -562,6 +783,12 @@ void doom_menu_run(struct doom_menu_choice *choice)
                 choice->iwad = DOOM_MENU_MASTER_IWAD;
                 choice->pwad = doom_menu_masters[master].wad;
                 choice->map = doom_menu_masters[master].map;
+                {
+                    char name[48];
+
+                    snprintf(name, sizeof(name), "MASTER: %s", doom_menu_masters[master].title);
+                    loading_begin(name);
+                }
                 return;
             }
         }

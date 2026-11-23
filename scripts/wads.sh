@@ -6,6 +6,9 @@
 # Variaveis:
 #   WAD_DIR  pasta onde estao as WADs (procura ate 4 niveis abaixo, sem diferenciar maiusculas de minusculas); se nao
 #            vier, usa a que o `fetch.sh --wad-dir` guardou em .wad-dir
+#   ONDEMAND=1  so empacota (wads.bin alinhado a 4 KiB) para o cartao microSD (SD=demand): a tabela guarda o deslocamento de
+#            cada WAD no wads.bin no lugar de um endereco da SDRAM, nao confere o limite da SDRAM e escreve
+#            wads.index.tsv (entrada do scripts/sdwrite.py). O conjunto inteiro (doom doom2 plutonia tnt master) cabe
 #   WAD_SET  jogos do menu, em ordem (padrao "doom doom2 plutonia master"): doom, doom2, plutonia, tnt e master. O
 #            master (Master Levels) usa o doom2.wad como base e exige o doom2 no conjunto
 #
@@ -32,6 +35,10 @@ if [ -z "${WAD_DIR:-}" ] || [ ! -d "$WAD_DIR" ]; then
 fi
 
 WAD_BASE=0x40100000
+# ONDEMAND: sem WAD na SDRAM, o orcamento da imagem do jogo (codigo, dados e bss, com o buffer do cartao) sobe para 2 MiB
+if [ "${ONDEMAND:-0}" = 1 ]; then
+  WAD_BASE=0x40200000
+fi
 ALIGN=4096
 # Fim da area das WADs mais framebuffer, heap e bloco de medicao: tem de acabar antes disto
 LIMIT=0x43780000
@@ -125,6 +132,7 @@ TXT="$OUT/wads.txt"
 : > "$TXT"
 BLOB="$OUT/wads.bin"
 : > "$BLOB"
+: > "$OUT/wads.index.tsv"
 HDR="$OUT/wad_table.h.body"
 : > "$HDR"
 offset=0
@@ -140,7 +148,12 @@ while IFS="$(printf '\t')" read -r kind name path map; do
     head -c "$pad" /dev/zero >> "$BLOB"
     offset=$((offset + pad))
   fi
-  addr=$((WAD_BASE + offset))
+  if [ "${ONDEMAND:-0}" = 1 ]; then
+    addr=$offset
+  else
+    addr=$((WAD_BASE + offset))
+  fi
+  printf '%s\t%s\t%s\t%s\t%s\n' "$kind" "$fname" "$offset" "$size" "$map" >> "$OUT/wads.index.tsv"
   cat "$path" >> "$BLOB"
   sum=$(sha256sum "$path" | cut -d' ' -f1)
   printf '%-14s %10d bytes  0x%08X  sha256 %s\n' "$fname" "$size" "$addr" "$sum" >> "$TXT"
@@ -169,10 +182,14 @@ index_of() {
 
 WAD_SIZE=$offset
 WAD_END=$(( (WAD_BASE + WAD_SIZE + ALIGN - 1) / ALIGN * ALIGN ))
+if [ "${ONDEMAND:-0}" = 1 ]; then
+  # Sem WAD na SDRAM: o framebuffer vem logo depois da imagem do jogo (que cabe em 2 MiB)
+  WAD_END=$WAD_BASE
+fi
 FB_ADDR=$WAD_END
 HEAP_START=$((FB_ADDR + FB_RESERVE))
 HEAP_END=$((HEAP_START + HEAP_RESERVE))
-if [ "$HEAP_END" -gt "$((LIMIT))" ]; then
+if [ "${ONDEMAND:-0}" != 1 ] && [ "$HEAP_END" -gt "$((LIMIT))" ]; then
   echo "as WADs nao cabem na SDRAM com o heap de 7 MB: terminam em $(printf '0x%08X' "$WAD_END") e o heap iria ate" \
     "$(printf '0x%08X' "$HEAP_END"), acima de $(printf '0x%08X' "$LIMIT")." >&2
   echo "tire um jogo do WAD_SET (por exemplo troque plutonia por tnt, ou tire o master)" >&2
@@ -231,7 +248,9 @@ rm -f "$HDR"
 cat > "$OUT/wads.env" <<EOF
 # Gerado por scripts/wads.sh: nao edite.
 WAD_ADDR=$(printf '0x%08X' "$WAD_BASE")
-WAD_SIZE=$WAD_SIZE
+WAD_SIZE=$( [ "${ONDEMAND:-0}" = 1 ] && echo 0 || echo "$WAD_SIZE" )
+SD_ONDEMAND=${ONDEMAND:-0}
+WADS_BIN_SIZE=$WAD_SIZE
 FB_ADDR=$(printf '0x%08X' "$FB_ADDR")
 FB_BYTES=256000
 HEAP_START=$(printf '0x%08X' "$HEAP_START")

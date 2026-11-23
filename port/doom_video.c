@@ -27,8 +27,16 @@
 #include "doomstat.h"
 
 #include "doom_kbd.h"
+#include "doom_logo.h"
+#ifdef DOOM_MENU
+#include "doom_menu.h"
+#endif
 #include "doom_platform.h"
 #include "doom_video.h"
+
+#ifndef DEATH_MENU_MS
+#define DEATH_MENU_MS 5000u /* a animacao de morte termina antes; depois o menu abre sozinho */
+#endif
 
 #ifdef DOOM_VIDEO
 #include "memory_map.h"
@@ -87,6 +95,12 @@ static uint32_t crc32_bytes(const uint8_t *p, uint32_t n)
     return ~crc;
 }
 
+#ifdef DOOM_FPS_HUD
+extern int viewwidth;
+extern int viewwindowy;
+static void hud_pick_colors(void);
+#endif
+
 /* Converte colors[] (8 bits por canal) para RGB444, tomando os 4 bits altos de cada canal */
 static void palette_convert(void)
 {
@@ -98,7 +112,159 @@ static void palette_convert(void)
 
         palette12[i] = (uint16_t)((r << 8) | (g << 4) | b);
     }
+#ifdef DOOM_FPS_HUD
+    hud_pick_colors();
+    doom_logo_set_palette(palette12);
+#endif
 }
+
+
+#ifdef DOOM_FPS_HUD
+/*
+ * Indicador de FPS em amarelo no canto superior direito, como o do Fraps (HUD=1 no build.sh; a imagem da placa o liga
+ * por padrao). Mostra os quadros por segundo do ultimo segundo. O desenho entra depois do CRC dos quadros, que nao o
+ * enxerga. No jogo normal o numero nunca passa dos 35 tics por segundo do DOOM.
+ */
+/* Glifos 3x5, uma linha de 3 bits por tres bits da palavra (linha de cima nos bits altos) */
+static uint16_t hud_glyph(char c)
+{
+    switch (c)
+    {
+    case '0': return 0x7B6F;
+    case '1': return 0x2C97;
+    case '2': return 0x73E7;
+    case '3': return 0x73CF;
+    case '4': return 0x5BC9;
+    case '5': return 0x79CF;
+    case '6': return 0x79EF;
+    case '7': return 0x7252;
+    case '8': return 0x7BEF;
+    case '9': return 0x7BCF;
+    case 'F': return 0x79E4;
+    case 'P': return 0x7BE4;
+    case 'S': return 0x79CF;
+    case 'M': return 0x5FED;
+    case 'A': return 0x2BED;
+    case 'X': return 0x5AAD;
+    default: return 0u;
+    }
+}
+
+static uint8_t hud_fg;
+static uint8_t hud_bg;
+static uint32_t hud_fps;
+
+/* Escolhe o amarelo mais vivo e o preto mais escuro da paleta atual */
+static void hud_pick_colors(void)
+{
+    static int fixed;
+
+    /* So a primeira paleta escolhe as cores, como o resto do jogo: os tingimentos de dano e item mudam as cores da cena
+     * pelos mesmos indices */
+    if (fixed != 0)
+    {
+        return;
+    }
+    fixed = 1;
+    int32_t best_y = -1000;
+    uint32_t best_lo = 0xFFFFu;
+
+    for (uint32_t i = 0; i < 256u; i++)
+    {
+        int32_t r = (int32_t)((uint32_t)palette12[i] >> 8);
+        int32_t g = (int32_t)((palette12[i] >> 4) & 0xFu);
+        int32_t b = (int32_t)(palette12[i] & 0xFu);
+        int32_t m = (r < g) ? r : g;
+        int32_t y = 2 * m - b + (r + g) / 4;
+        uint32_t v = (uint32_t)(r + g + b);
+
+        if (y > best_y)
+        {
+            best_y = y;
+            hud_fg = (uint8_t)i;
+        }
+        if (v < best_lo)
+        {
+            best_lo = v;
+            hud_bg = (uint8_t)i;
+        }
+    }
+}
+
+/* Desenha so os pixels acesos de um caractere com escala 2 em (x, y), na cor dada */
+static void hud_char(uint8_t *fb, uint32_t x, uint32_t y, char c, uint8_t color)
+{
+    uint16_t g = hud_glyph(c);
+
+    for (uint32_t row = 0; row < 5u; row++)
+    {
+        for (uint32_t col = 0; col < 3u; col++)
+        {
+            if (((g >> (14u - 3u * row - col)) & 1u) != 0u)
+            {
+                uint8_t *p = fb + (y + 2u * row) * DOOMGENERIC_RESX + x + 2u * col;
+
+                p[0] = color;
+                p[1] = color;
+                p[DOOMGENERIC_RESX] = color;
+                p[DOOMGENERIC_RESX + 1u] = color;
+            }
+        }
+    }
+}
+
+/* Uma linha "RRR nnn" de seis caracteres a partir de (x, y): sombra preta e depois os numeros amarelos, sem caixa */
+static void hud_line(uint8_t *fb, uint32_t x, uint32_t y, const char *label, uint32_t value)
+{
+    char text[6];
+
+    text[0] = label[0];
+    text[1] = label[1];
+    text[2] = label[2];
+    text[3] = (value >= 100u) ? (char)('0' + (value / 100u) % 10u) : ' ';
+    text[4] = (value >= 10u) ? (char)('0' + (value / 10u) % 10u) : ' ';
+    text[5] = (char)('0' + value % 10u);
+    for (uint32_t i = 0; i < 6u; i++)
+    {
+        hud_char(fb, x + 8u * i + 1u, y + 1u, text[i], hud_bg);
+    }
+    for (uint32_t i = 0; i < 6u; i++)
+    {
+        hud_char(fb, x + 8u * i, y, text[i], hud_fg);
+    }
+}
+
+/* Atualiza o valor a cada segundo e desenha a linha */
+static void hud_draw(uint8_t *fb, uint32_t ms)
+{
+    static uint32_t t0_ms;
+    static uint32_t frames;
+
+    frames++;
+    if ((uint32_t)(ms - t0_ms) >= 1000u)
+    {
+        hud_fps = (frames * 1000u + (ms - t0_ms) / 2u) / (ms - t0_ms);
+        t0_ms = ms;
+        frames = 0u;
+    }
+    /*
+     * O HUD escreve direto no buffer do jogo (sem a copia do quadro). Numa partida com a vista inteira o jogo redesenha
+     * esse canto a cada quadro, entao nao fica resto; nas telas estaticas (titulo, intervalo, vista reduzida) uma caixa
+     * escura apaga o numero anterior.
+     */
+    if (gamestate != GS_LEVEL || viewwidth != DOOMGENERIC_RESX || viewwindowy != 0)
+    {
+        for (uint32_t y = 1u; y < 15u; y++)
+        {
+            for (uint32_t x = DOOMGENERIC_RESX - 54u; x < DOOMGENERIC_RESX - 1u; x++)
+            {
+                fb[y * DOOMGENERIC_RESX + x] = hud_bg;
+            }
+        }
+    }
+    hud_line(fb, DOOMGENERIC_RESX - 52u, 3u, "FPS", hud_fps);
+}
+#endif /* DOOM_FPS_HUD */
 
 #ifdef DOOM_VIDEO
 
@@ -308,6 +474,10 @@ void doom_video_frame(uint32_t frame)
 
     if (frame == 1u)
     {
+#ifdef DOOM_MENU
+        /* O primeiro quadro do jogo substitui a tela de carga do menu */
+        doom_menu_loading_end();
+#endif
         /* Zera o que sobrou de uma execucao anterior na SDRAM */
         VSTAT[DOOM_VST_MAGIC] = 0u;
         VSTAT[DOOM_VST_CAPTURED] = 0u;
@@ -329,6 +499,9 @@ void doom_video_frame(uint32_t frame)
         VSTAT[DOOM_VST_CAPTURED] = frame;
     }
 
+#ifdef DOOM_FPS_HUD
+    hud_draw((uint8_t *)DG_ScreenBuffer, ms);
+#endif
 #ifdef DOOM_PROFILE
     pc1 = doom_read_cycle();
 #endif
@@ -355,6 +528,46 @@ void doom_video_frame(uint32_t frame)
     }
 #endif
 
+#if defined(DOOM_INTERACTIVE) && !defined(DOOM_MEASURE)
+    /*
+     * Jogador morto: o DOOM original deixa a tela parada na vista do corpo e so reinicia a fase com o botao de usar,
+     * sem nenhum aviso. Aqui a mensagem "VOCE MORREU" ensina o botao e, passados DEATH_MENU_MS (5 s), o menu do
+     * jogo abre sozinho (Novo Jogo, Carregar, Sair). Se o jogador reiniciar antes, o contador zera.
+     */
+    {
+        static uint32_t dead_since_ms;
+        static uint32_t dead_msg_ms;
+        static bool was_dead;
+        static bool menu_done;
+        extern void M_StartControlPanel(void);
+
+        if (gamestate == GS_LEVEL && !demoplayback && players[consoleplayer].playerstate == PST_DEAD)
+        {
+            if (!was_dead)
+            {
+                was_dead = true;
+                menu_done = false;
+                dead_since_ms = ms;
+                dead_msg_ms = ms;
+            }
+            /* Mensagem depois da animacao de queda (1,5 s) e a cada 3 s */
+            if (!menuactive && (uint32_t)(ms - dead_since_ms) >= 1500u && (uint32_t)(ms - dead_msg_ms) >= 3000u)
+            {
+                dead_msg_ms = ms;
+                players[consoleplayer].message = (char *)"YOU DIED! PRESS ENTER OR E TO RESTART";
+            }
+            if (!menuactive && !menu_done && (uint32_t)(ms - dead_since_ms) >= DEATH_MENU_MS)
+            {
+                M_StartControlPanel();
+                menu_done = true; /* nao reabre o menu depois de fechado */
+            }
+        }
+        else
+        {
+            was_dead = false;
+        }
+    }
+#endif
 #ifdef DOOM_INTERACTIVE
     /*
      * Inatividade: qualquer byte do teclado (pressionar, soltar, repeticao) recomeca a contagem, feita pelo relogio
