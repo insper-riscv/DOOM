@@ -4,13 +4,17 @@
 # do `riscv-tools` para carregar, acompanhar e conferir a execucao na DE0-CV. Nao toca a
 # placa: so compila e escreve texto.
 # Variaveis: INSPER_RISCV (raiz de um clone completo do Insper-RISC-V, que o riscv-tools usa
-# como --root; padrao $HOME/Insper-RISC-V), OPT e PLATFORM_DIR (repassadas ao build.sh). MENU=1 (com VIDEO=1 e
+# como --root; padrao $HOME/Insper-RISC-V), OPT (padrao -O3 -funroll-loops) e PLATFORM_DIR (repassadas ao build.sh). MENU=1 (com VIDEO=1 e
 # INTERACTIVE=1) monta o menu com as WADs da pasta de `fetch.sh --wad-dir` (WAD_SET escolhe os jogos).
 set -eu
 cd "$(dirname "$0")/.."
 
 . scripts/layout.sh
 
+# A imagem da placa sai com -O3 -funroll-loops por padrao: no Spike isso corta 6,4% das instrucoes por quadro do
+# timedemo (de 1.722.158 para 1.612.385) com o mesmo CRC-32 dos quadros; OPT escolhe outro nivel.
+OPT=${OPT:--O3 -funroll-loops}
+export OPT
 TARGET=board OUT=build-board sh build.sh
 
 if [ "${MENU:-0}" = 1 ]; then
