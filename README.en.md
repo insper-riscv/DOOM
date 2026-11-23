@@ -78,7 +78,7 @@ The four games together add up to 62.6 MB and do not fit. To put in three, write
 
 Master Levels uses `doom2.wad` as its base, so `master` only goes in together with `doom2`. The default carries the Ultimate DOOM, DOOM II, Plutonia and the 20 maps of Master Levels.
 
-## 5. The keys and how the menu was made
+## 5. The keys
 
 ### 5.1. Keys of the game choice menu
 
@@ -113,16 +113,6 @@ They are the same in the three games and in Master Levels.
 | F10 and then Y | Quit Game: returns to the game choice menu |
 
 In the menus of the game itself the four arrows navigate, and W S A D and E act as up, down, left, right and Enter, except when typing the name of a saved game, where they are letters. The up and down keys have no function during play.
-
-### 5.3. How the menu was made
-
-1. **Art from the WAD itself.** The menu carries no image. It reads from the first WAD of the list the background (the title screen, darkened by one of the light maps of the WAD), the skull, the small font of the game and the 256-color palette. The repository still holds no DOOM file.
-2. **A 320x200 screen of indices.** Each screen is built in an 8-bit-per-pixel buffer, the same format as the game, and the text is drawn letter by letter with the cutouts of the font, enlarged 2 times in the titles. The chosen item uses the original colors of the font, which are reddish. The others swap each color for a gray of similar brightness, and the descriptions use a darker gray.
-3. **Delivery to the video.** The buffer and the palette go straight to the video peripheral, the same way the game writes a frame. The skull blinks every 250 ms, and the screen is redrawn only when something changes.
-4. **Keyboard.** The menu reads the events of the same PS/2 keyboard as the game, with no new driver.
-5. **From the choice to the game.** The choice becomes the arguments of DOOM: the name of the base WAD and, in Master Levels, the WAD of the map and the map it enters. The WADs sit in a single image in the SDRAM, with a table of name, address and size, and the game opens each one by name.
-6. **Back to the menu.** When the game ends, the program restores the initial data and starts over from the beginning. Since the menu is the first thing the program does, it reappears by itself, with nothing reloaded into the SDRAM.
-7. **Checking without the board.** `scripts/menu_test.sh` runs the menu on Spike with a key script, checks the choice returned and saves each screen as a PNG in `build-layout/menu-png/`. The images are not kept in the repository because they show the DOOM art.
 
 ## 6. Contributing
 

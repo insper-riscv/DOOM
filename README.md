@@ -78,7 +78,7 @@ Os quatro jogos juntos somam 62,6 MB e não cabem. Para colocar três, escreva o
 
 O Master Levels usa o `doom2.wad` como base, então o `master` só entra junto do `doom2`. O padrão leva o Ultimate DOOM, o DOOM II, o Plutonia e as 20 fases do Master Levels.
 
-## 5. As teclas e como o menu foi feito
+## 5. As teclas
 
 ### 5.1. Teclas do menu de escolha
 
@@ -113,16 +113,6 @@ São as mesmas nos três jogos e no Master Levels.
 | F10 e depois Y | Quit Game: volta ao menu de escolha do jogo |
 
 Nos menus do próprio jogo as quatro setas navegam, e W S A D e E fazem o papel de cima, baixo, esquerda, direita e Enter, exceto na digitação do nome de um jogo salvo, onde são letras. As teclas de cima e de baixo não têm função durante a partida.
-
-### 5.3. Como o menu foi feito
-
-1. **Arte da própria WAD.** O menu não traz imagem nenhuma. Ele lê da primeira WAD da lista o fundo (a tela de título, escurecida por um dos mapas de luz da WAD), a caveira, a fonte pequena do jogo e a paleta de 256 cores. O repositório continua sem nenhum arquivo do DOOM.
-2. **Uma tela de 320x200 de índices.** Cada tela é montada num buffer de 8 bits por pixel, o mesmo formato do jogo, e o texto é desenhado letra a letra com os recortes da fonte, ampliados 2 vezes nos títulos. O item escolhido usa as cores originais da fonte, que são avermelhadas. Os outros trocam cada cor por um cinza de brilho parecido, e as descrições usam um cinza mais escuro.
-3. **Entrega ao vídeo.** O buffer e a paleta vão direto ao periférico de vídeo, do mesmo jeito que o jogo escreve um quadro. A caveira pisca a cada 250 ms, e a tela só é redesenhada quando algo muda.
-4. **Teclado.** O menu lê os eventos do mesmo teclado PS/2 do jogo, sem driver novo.
-5. **Da escolha ao jogo.** A escolha vira os argumentos do DOOM: o nome da WAD base e, no Master Levels, a WAD da fase e o mapa em que ela entra. As WADs ficam numa única imagem na SDRAM, com uma tabela de nome, endereço e tamanho, e o jogo abre cada uma pelo nome.
-6. **Volta ao menu.** Quando o jogo termina, o programa restaura os dados iniciais e recomeça do início. Como o menu é a primeira coisa que o programa faz, ele reaparece sozinho, sem recarregar nada na SDRAM.
-7. **Conferência sem a placa.** O `scripts/menu_test.sh` roda o menu no Spike com um roteiro de teclas, confere a escolha devolvida e salva cada tela como PNG em `build-layout/menu-png/`. As imagens não ficam no repositório porque mostram a arte do DOOM.
 
 ## 6. Contribuição
 
