@@ -71,6 +71,8 @@ enum doom_result_word
 #define DOOM_MEAS_HPM 9u            /* contadores de evento lidos (indices 3 a 11) */
 #define DOOM_MEAS_SNAP_WORDS 16u
 #define DOOM_MEAS_HEAD_WORDS 16u
+#define DOOM_MEAS_FRAME_OFF 2048u   /* palavra do bloco onde comecam os ciclos de cada quadro */
+#define DOOM_MEAS_FRAME_MAX 1024u   /* quadros registrados, um por palavra (32 bits baixos do delta) */
 
 enum doom_meas_head_word
 {

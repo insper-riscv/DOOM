@@ -33,6 +33,6 @@ run_in_container() {
   # shellcheck disable=SC2086
   exec docker run --rm --user "$(id -u):$(id -g)" -e HOME=/w/.home $wad_mount -e WAD_DIR -e WAD_SET -e MENU -e MENU_SCRIPT -e MENU_STOP \
     -e DOOM_IN_CONTAINER=1 -e OPT -e OUT -e RAM_ORIGIN -e RAM_LENGTH -e TARGET -e PLATFORM_DIR -e MEASURE -e MEASURE_STOP \
-    -e VIDEO -e INTERACTIVE -e TESTKEYS -e IDLE_MS -e PROFILE -e VSYNC -e VCRC_FRAMES -e EXPECTED_CRC32 \
+    -e MENU_AUTO -e MENU_AUTO_GAME -e MENU_AUTO_DEMO -e VIDEO -e INTERACTIVE -e HUD -e SD -e SDFS -e ONDEMAND -e TESTKEYS -e IDLE_MS -e PROFILE -e VSYNC -e VCRC_FRAMES -e EXPECTED_CRC32 \
     -v "$PWD":/w -w /w "$DEV_TOOLS_IMAGE" sh "/w/$script" "$@"
 }

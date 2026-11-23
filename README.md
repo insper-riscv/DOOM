@@ -78,6 +78,55 @@ Os quatro jogos juntos somam 62,6 MB e não cabem. Para colocar três, escreva o
 
 O Master Levels usa o `doom2.wad` como base, então o `master` só entra junto do `doom2`. O padrão leva o Ultimate DOOM, o DOOM II, o Plutonia e as 20 fases do Master Levels.
 
+### 4.2. O cartão microSD: duas formas de ler as WADs
+
+Com `SD=demand ONDEMAND=1` as WADs ficam só no cartão microSD e o jogo as lê a cada lump, sem copiá-las para a SDRAM. A variável `SDFS` escolhe como o cartão está organizado, e as duas formas funcionam em `build.sh` e em `scripts/image.sh`.
+
+| `SDFS` | Nome | Cartão | Quem prepara |
+| :--- | :--- | :--- | :--- |
+| `raw` (padrão) | `sdcard_direct_mapped` | O `wads.bin` gravado cru a partir de um setor fixo, sem sistema de arquivos | `scripts/wads.sh` empacota e `scripts/sdwrite.py` grava |
+| `fatfs` | `sdcard_FatFs` | Um FAT32 comum, com as WADs como arquivos | O explorador de arquivos do sistema, sem script |
+
+#### 4.2.1. Cartão cru (`SDFS=raw`)
+
+```bash
+PLATFORM_DIR=platform_doom WAD_DIR=/caminho/das/wads WAD_SET="doom doom2 plutonia tnt master" \
+  MENU=1 VIDEO=1 INTERACTIVE=1 SD=demand ONDEMAND=1 sh scripts/image.sh
+uv run --no-project scripts/sdwrite.py --target /dev/mmcblk0
+```
+
+O `sdwrite.py` apaga a tabela de partições do cartão, então o cartão deixa de ser um FAT32. O cartão fica cru, e o jogo sabe o setor de cada WAD pelo índice gravado.
+
+#### 4.2.2. Cartão FAT32 com o FatFs (`SDFS=fatfs`)
+
+```bash
+./fetch.sh
+PLATFORM_DIR=platform_doom SDFS=fatfs MENU=1 VIDEO=1 INTERACTIVE=1 SD=demand ONDEMAND=1 sh scripts/image.sh
+```
+
+Esta forma não pede `WAD_DIR`, `wads.sh` nem `sdwrite.py`. O `fetch.sh` baixa o FatFs R0.15a do site do autor (ChaN) com o SHA-256 conferido, e o `build.sh` o compila junto do jogo. Prepare o cartão assim:
+
+1. Formate o cartão em FAT32 (com ou sem tabela de partições MBR). Use cluster de 32 KB ou maior, que é o padrão dos cartões de 32 GB em diante e deixa a FAT curta.
+2. Copie para a raiz as WADs que tiver, com estes nomes: `DOOM.WAD`, `DOOM2.WAD`, `PLUTONIA.WAD` e `TNT.WAD`.
+3. Para o Master Levels, crie a pasta `MASTER` (ou `MASTER/WADS`), copie as fases (`ATTACK.WAD`, `CANYON.WAD` e as outras) e, se quiser, o `DOOM2.MAP` do pacote. O Master Levels só aparece no menu junto do `DOOM2.WAD`.
+
+O menu mostra só o que achar no cartão, no mesmo estilo de hoje. Nomes são 8.3 e sem diferenciar maiúsculas de minúsculas. O mapa em que cada fase do Master Levels entra no DOOM II vem do `DOOM2.MAP` do cartão; sem o arquivo, vale a tabela embutida no jogo, que é a do `DOOM2.MAP` do pacote original.
+
+#### 4.2.3. Vantagens e custo
+
+| | Cru | FatFs |
+| :--- | :--- | :--- |
+| Preparar o cartão | Empacotar e gravar com script, cartão inteiro dedicado ao jogo | Copiar arquivos; o cartão continua servindo para outros usos |
+| Trocar ou acrescentar uma WAD | Regravar o `wads.bin` inteiro | Copiar ou apagar o arquivo, sem rebuild |
+| Rebuild ao mudar as WADs | Sim (a tabela vai na imagem) | Não |
+| Código na imagem | Referência | Cerca de 13 KB a mais (FatFs e a camada de disco) |
+| RAM (bss) | Referência | Cerca de 2 KB a menos (as cinco `struct` do FatFs somam 9,8 KB, e o índice cru de 4 KB e a cache de 8 setores saem) |
+| Blocos por lump | $\lceil n/512 \rceil$ mais um | O mesmo, mais cerca de um bloco de FAT por arquivo aberto a cada 128 clusters (mapa de clusters) |
+| Abrir uma WAD | Nenhum bloco | Cerca de 4 blocos para uma WAD de 12 MB com cluster de 32 KB |
+| Leituras pequenas que alternam entre setores distantes | Cache de 8 setores | Um setor por arquivo aberto (pode reler mais) |
+
+O FatFs é do ChaN e tem licença própria permissiva, de uso livre em projetos comerciais e abertos, que só pede manter o aviso de copyright no código-fonte (texto em `fatfs/LICENSE.txt` depois do `fetch.sh`). Ele não fica neste repositório. A configuração do jogo é `port/ffconf.h`: somente leitura, FAT32 sem exFAT, nomes 8.3, uma unidade, sem relógio e com `FF_USE_FASTSEEK` (o mapa de clusters, que deixa o `f_lseek` independente do tamanho da WAD).
+
 ## 5. As teclas
 
 ### 5.1. Teclas do menu de escolha

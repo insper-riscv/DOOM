@@ -95,7 +95,7 @@ void doom_kbd_set_menu_hook(int (*hook)(void))
     menu_nav_hook = hook;
 }
 
-/* No menu, W S A D e E viram as setas e o Enter */
+/* No menu, W S A D viram as setas, e E e Espaco viram o Enter */
 static uint8_t menu_translate(uint8_t key)
 {
     switch (key)
@@ -109,6 +109,7 @@ static uint8_t menu_translate(uint8_t key)
     case 'd':
         return KEY_RIGHTARROW;
     case 'e':
+    case ' ':
         return KEY_ENTER;
     default:
         return key;
@@ -182,6 +183,11 @@ static void key_event(bool ext, uint8_t code, bool pressed)
         if (menu_nav_hook != NULL && menu_nav_hook() != 0)
         {
             key = menu_translate(key);
+        }
+        else if (menu_nav_hook != NULL && key == KEY_ENTER)
+        {
+            /* Fora do menu o Enter faz o papel do botao de usar (E): abre portas e reinicia a fase depois de morrer */
+            key = 'e';
         }
         *slot = key;
     }

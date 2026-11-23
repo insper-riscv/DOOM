@@ -1,0 +1,121 @@
+diff --git a/doomgeneric/i_input.c b/doomgeneric/i_input.c
+index 7ec4b63..518d1f9 100644
+--- a/doomgeneric/i_input.c
++++ b/doomgeneric/i_input.c
+@@ -335,7 +335,7 @@ void I_GetEvent(void)
+                 */
+ }
+ 
+-void I_InitInput(void)
++__attribute__((noipa)) void I_InitInput(void)
+ {
+ }
+ 
+diff --git a/doomgeneric/i_system.c b/doomgeneric/i_system.c
+index 53ab2c9..134e084 100644
+--- a/doomgeneric/i_system.c
++++ b/doomgeneric/i_system.c
+@@ -243,7 +243,7 @@ void I_BindVariables(void)
+ // I_Quit
+ //
+ 
+-void I_Quit (void)
++__attribute__((noipa)) void I_Quit (void)
+ {
+     atexit_listentry_t *entry;
+ 
+diff --git a/doomgeneric/m_misc.c b/doomgeneric/m_misc.c
+index 54b2613..3de6b5a 100644
+--- a/doomgeneric/m_misc.c
++++ b/doomgeneric/m_misc.c
+@@ -63,7 +63,7 @@ void M_MakeDirectory(char *path)
+ 
+ // Check if a file exists
+ 
+-boolean M_FileExists(char *filename)
++__attribute__((noipa)) boolean M_FileExists(char *filename)
+ {
+     FILE *fstream;
+ 
+diff --git a/doomgeneric/r_draw.c b/doomgeneric/r_draw.c
+index 9271bcd..34f0519 100644
+--- a/doomgeneric/r_draw.c
++++ b/doomgeneric/r_draw.c
+@@ -129,19 +129,27 @@ void R_DrawColumn (void)
+     fracstep = dc_iscale; 
+     frac = dc_texturemid + (dc_yl-centery)*fracstep; 
+ 
+-    // Inner loop that does the actual texture mapping,
+-    //  e.g. a DDA-lile scaling.
+-    // This is as fast as it gets.
+-    do 
+     {
+-	// Re-map color indices from wall texture column
+-	//  using a lighting/special effects LUT.
+-	*dest = dc_colormap[dc_source[(frac>>FRACBITS)&127]];
+-	
+-	dest += SCREENWIDTH; 
+-	frac += fracstep;
+-	
+-    } while (count--); 
++        const byte *src = dc_source;
++        const byte *cm = dc_colormap;
++        int n = count + 1;
++        while (n >= 4)
++        {
++            dest[0] = cm[src[(frac>>FRACBITS)&127]]; frac += fracstep;
++            dest[SCREENWIDTH] = cm[src[(frac>>FRACBITS)&127]]; frac += fracstep;
++            dest[2*SCREENWIDTH] = cm[src[(frac>>FRACBITS)&127]]; frac += fracstep;
++            dest[3*SCREENWIDTH] = cm[src[(frac>>FRACBITS)&127]]; frac += fracstep;
++            dest += 4*SCREENWIDTH;
++            n -= 4;
++        }
++        while (n-- > 0)
++        {
++            *dest = cm[src[(frac>>FRACBITS)&127]];
++            dest += SCREENWIDTH;
++            frac += fracstep;
++        }
++    }
++
+ } 
+ 
+ 
+@@ -622,20 +630,24 @@ void R_DrawSpan (void)
+     // We do not check for zero spans here?
+     count = ds_x2 - ds_x1;
+ 
+-    do
+     {
+-	// Calculate current texture index in u,v.
+-        ytemp = (position >> 4) & 0x0fc0;
+-        xtemp = (position >> 26);
+-        spot = xtemp | ytemp;
+-
+-	// Lookup pixel from flat texture tile,
+-	//  re-index using light/colormap.
+-	*dest++ = ds_colormap[ds_source[spot]];
+-
+-        position += step;
+-
+-    } while (count--);
++        const byte *src = ds_source;
++        const byte *cm = ds_colormap;
++        int n = count + 1;
++#define SPAN_PIX(k) \
++        dest[k] = cm[src[((position >> 26) | ((position >> 4) & 0x0fc0))]]; position += step;
++        while (n >= 4)
++        {
++            SPAN_PIX(0) SPAN_PIX(1) SPAN_PIX(2) SPAN_PIX(3)
++            dest += 4;
++            n -= 4;
++        }
++        while (n-- > 0)
++        {
++            SPAN_PIX(0)
++            dest++;
++        }
++    }
+ }
+ 
+ 

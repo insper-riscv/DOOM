@@ -78,6 +78,55 @@ The four games together add up to 62.6 MB and do not fit. To put in three, write
 
 Master Levels uses `doom2.wad` as its base, so `master` only goes in together with `doom2`. The default carries the Ultimate DOOM, DOOM II, Plutonia and the 20 maps of Master Levels.
 
+### 4.2. The microSD card: two ways to read the WADs
+
+With `SD=demand ONDEMAND=1` the WADs live only on the microSD card and the game reads them lump by lump, without copying them to the SDRAM. The `SDFS` variable chooses how the card is organized, and both forms work from `build.sh` and `scripts/image.sh`.
+
+| `SDFS` | Name | Card | Prepared by |
+| :--- | :--- | :--- | :--- |
+| `raw` (default) | `sdcard_direct_mapped` | `wads.bin` written raw from a fixed sector, with no file system | `scripts/wads.sh` packs and `scripts/sdwrite.py` writes |
+| `fatfs` | `sdcard_FatFs` | A regular FAT32, with the WADs as files | The operating system file manager, no script |
+
+#### 4.2.1. Raw card (`SDFS=raw`)
+
+```bash
+PLATFORM_DIR=platform_doom WAD_DIR=/path/to/wads WAD_SET="doom doom2 plutonia tnt master" \
+  MENU=1 VIDEO=1 INTERACTIVE=1 SD=demand ONDEMAND=1 sh scripts/image.sh
+uv run --no-project scripts/sdwrite.py --target /dev/mmcblk0
+```
+
+`sdwrite.py` erases the card partition table, so the card stops being a FAT32. The card stays raw, and the game finds each WAD from the index written on it.
+
+#### 4.2.2. FAT32 card with FatFs (`SDFS=fatfs`)
+
+```bash
+./fetch.sh
+PLATFORM_DIR=platform_doom SDFS=fatfs MENU=1 VIDEO=1 INTERACTIVE=1 SD=demand ONDEMAND=1 sh scripts/image.sh
+```
+
+This form needs no `WAD_DIR`, `wads.sh` or `sdwrite.py`. `fetch.sh` downloads FatFs R0.15a from the author site (ChaN) with the SHA-256 checked, and `build.sh` compiles it with the game. Prepare the card like this:
+
+1. Format the card as FAT32 (with or without an MBR partition table). Use a cluster of 32 KB or larger, the default for cards of 32 GB and up, which keeps the FAT short.
+2. Copy the WADs you have to the root, with these names: `DOOM.WAD`, `DOOM2.WAD`, `PLUTONIA.WAD` and `TNT.WAD`.
+3. For Master Levels, create the `MASTER` folder (or `MASTER/WADS`), copy the levels (`ATTACK.WAD`, `CANYON.WAD` and the others) and, if you like, the `DOOM2.MAP` of the package. Master Levels shows in the menu only together with `DOOM2.WAD`.
+
+The menu shows only what it finds on the card, in the same style as before. Names are 8.3 and case-insensitive. The map each Master Levels level opens in DOOM II comes from the `DOOM2.MAP` on the card; without the file, the table built into the game applies, which is the one from the original package `DOOM2.MAP`.
+
+#### 4.2.3. Advantages and cost
+
+| | Raw | FatFs |
+| :--- | :--- | :--- |
+| Preparing the card | Pack and write with a script, whole card dedicated to the game | Copy files; the card stays usable for other things |
+| Changing or adding a WAD | Rewrite the whole `wads.bin` | Copy or delete the file, no rebuild |
+| Rebuild when the WADs change | Yes (the table is in the image) | No |
+| Code in the image | Baseline | About 13 KB more (FatFs and the disk layer) |
+| RAM (bss) | Baseline | About 2 KB less (the FatFs structures add 9.8 KB, while the 4 KB raw index and the 8-sector cache go away) |
+| Blocks per lump | $\lceil n/512 \rceil$ plus one | The same, plus about one FAT block per open file every 128 clusters (cluster map) |
+| Opening a WAD | No block | About 4 blocks for a 12 MB WAD with 32 KB clusters |
+| Small reads alternating between distant sectors | 8-sector cache | One sector per open file (may reread more) |
+
+FatFs is by ChaN and has its own permissive license, free for commercial and open projects, which only asks to keep the copyright notice in the source (text in `fatfs/LICENSE.txt` after `fetch.sh`). It is not stored in this repository. The game configuration is `port/ffconf.h`: read-only, FAT32 without exFAT, 8.3 names, one drive, no clock and `FF_USE_FASTSEEK` (the cluster map, which makes `f_lseek` independent of the WAD size).
+
 ## 5. The keys
 
 ### 5.1. Keys of the game choice menu

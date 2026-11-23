@@ -6,9 +6,9 @@
  * simbolos RAM_ORIGIN e RAM_LENGTH, definidos so aqui; mude-os na linha de
  * comando do ld com --defsym=RAM_ORIGIN=... --defsym=RAM_LENGTH=...
  *
- * Tudo (codigo, constantes, WAD embutida, dados, bss, heap e pilha) fica em
- * uma regiao. Os dados iniciais tem endereco de carga igual ao de execucao,
- * entao a copia do crt0 da picolibc copia a regiao sobre ela mesma.
+ * Duas regioes: a FLASH (rom, a partir de 0x1000: codigo, constantes e os valores iniciais
+ * de .data, que o nucleo so le) e a RAM (dados, bss, heap e pilha). O crt0 da picolibc copia
+ * os valores iniciais de .data da FLASH para a RAM.
  *
  * Os simbolos de TLS, heap e pilha seguem o picolibc.ld.
  */
@@ -17,9 +17,13 @@ ENTRY(_start)
 
 RAM_ORIGIN = DEFINED(RAM_ORIGIN) ? RAM_ORIGIN : 0x40000000;
 RAM_LENGTH = DEFINED(RAM_LENGTH) ? RAM_LENGTH : 0x04000000;
+/* A FLASH (somente leitura para o nucleo): codigo, constantes e os valores iniciais de .data, ligados a partir de 0x1000 */
+ROM_ORIGIN = DEFINED(ROM_ORIGIN) ? ROM_ORIGIN : 0x00001000;
+ROM_LENGTH = DEFINED(ROM_LENGTH) ? ROM_LENGTH : 0x003FF000;
 
 MEMORY
 {
+	rom (rx)  : ORIGIN = ROM_ORIGIN, LENGTH = ROM_LENGTH
 	ram (rwx) : ORIGIN = RAM_ORIGIN, LENGTH = RAM_LENGTH
 }
 
@@ -42,7 +46,7 @@ SECTIONS
 		KEEP (*(.text.init.enter))
 		KEEP (*(.data.init.enter))
 		KEEP (*(SORT_BY_NAME(.init) SORT_BY_NAME(.init.*)))
-	} >ram AT>ram :text
+	} >rom AT>rom :text
 
 	.text : {
 		*(.literal.unlikely .text.unlikely .literal.unlikely.* .text.unlikely.*)
@@ -70,7 +74,7 @@ SECTIONS
 		KEEP (*(.fini_array .dtors))
 		KEEP (*(.fini_array*))
 		PROVIDE_HIDDEN ( __fini_array_end = . );
-	} >ram AT>ram :text
+	} >rom AT>rom :text
 
 	.rodata : {
 		*(.rdata)
@@ -81,21 +85,21 @@ SECTIONS
 		*(.srodata.cst4)
 		*(.srodata.cst2)
 		*(.srodata .srodata.*)
-	} >ram AT>ram :rodata
+	} >rom AT>rom :rodata
 
 	/* Imagem da WAD, embutida so no build do Spike; na placa a WAD vem por JTAG */
 	.wad : ALIGN(16) {
 		*(.wad)
-	} >ram AT>ram :rodata
+	} >rom AT>rom :rodata
 
 	.data.rel.ro : {
 		*(.data.rel.ro .data.rel.ro.*)
-	} >ram AT>ram :rodata
+	} >rom AT>rom :rodata
 
 	.plt : {
 		*(.rela.iplt)
 		*(.rela.*)
-	} >ram AT>ram :rodata
+	} >rom AT>rom :rodata
 
 	PROVIDE( __plt_start = ADDR(.plt) );
 	PROVIDE( __plt_size = SIZEOF(.plt) );
@@ -103,19 +107,19 @@ SECTIONS
 	.got : {
 		*(.got.plt)
 		*(.got)
-	} >ram AT>ram :rodata
+	} >rom AT>rom :rodata
 
 	.toc : {
 		*(.toc .toc.*)
 		*(.iplt .iplt.*)
-	} >ram AT>ram :rodata
+	} >rom AT>rom :rodata
 
 	/* Mailbox HTIF do Spike (tohost e fromhost), alinhado a 64 bytes */
 	.tohost : ALIGN(64) {
 		*(.tohost)
 		. = ALIGN(64);
 		*(.fromhost)
-	} >ram AT>ram :ram_init
+	} >ram AT>rom :ram_init
 
 	.data :
 		ALIGN_WITH_INPUT
@@ -135,7 +139,7 @@ SECTIONS
 		KEEP (*(.stack_chk .stack_chk.*))
 		PROVIDE( __tls_head_end = .);
 		PROVIDE( __tls_inittls = 0 );
-	} >ram AT>ram :ram_init
+	} >ram AT>rom :ram_init
 
 	PROVIDE(__data_start = ADDR(.data));
 	PROVIDE(__data_source = LOADADDR(.data));
@@ -147,7 +151,7 @@ SECTIONS
 		*(.tdata .tdata.* .gnu.linkonce.td.*)
 		PROVIDE( __data_end = . );
 		PROVIDE( __tdata_end = . );
-	} >ram AT>ram :tls_init :ram_init
+	} >ram AT>rom :tls_init :ram_init
 
 	.tbss (NOLOAD) : {
 		*(.tbss .tbss.* .gnu.linkonce.tb.*)

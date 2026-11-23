@@ -1,0 +1,127 @@
+diff --git a/doomgeneric/i_video.c b/doomgeneric/i_video.c
+index 84bebde..e0c219b 100644
+--- a/doomgeneric/i_video.c
++++ b/doomgeneric/i_video.c
+@@ -287,6 +287,13 @@ void I_InitGraphics (void)
+ 
+ 
+     /* Allocate screen to draw to */
++#if defined(CMAP256) && !defined(DOOM_FPS_HUD)
++    /* Quadro indexado sem escala: o jogo desenha direto no DG_ScreenBuffer e o I_FinishUpdate nao copia */
++    if (fb_scaling == 1 && s_Fb.xres == SCREENWIDTH && s_Fb.yres == SCREENHEIGHT
++        && s_Fb.bits_per_pixel == 8)
++        I_VideoBuffer = (byte*)DG_ScreenBuffer;
++    else
++#endif
+ 	I_VideoBuffer = (byte*)Z_Malloc (SCREENWIDTH * SCREENHEIGHT, PU_STATIC, NULL);  // For DOOM to draw on
+ 
+ 	screenvisible = true;
+@@ -297,6 +304,9 @@ void I_InitGraphics (void)
+ 
+ void I_ShutdownGraphics (void)
+ {
++#if defined(CMAP256) && !defined(DOOM_FPS_HUD)
++    if (I_VideoBuffer != (byte*)DG_ScreenBuffer)
++#endif
+ 	Z_Free (I_VideoBuffer);
+ }
+ 
+@@ -333,6 +343,13 @@ void I_FinishUpdate (void)
+     //x_offset     = 0;
+     x_offset_end = ((s_Fb.xres - (SCREENWIDTH  * fb_scaling)) * s_Fb.bits_per_pixel/8) - x_offset;
+ 
++#if defined(CMAP256) && !defined(DOOM_FPS_HUD)
++    if (I_VideoBuffer == (byte*)DG_ScreenBuffer)
++    {
++        DG_DrawFrame();
++        return;
++    }
++#endif
+     /* DRAW SCREEN */
+     line_in  = (unsigned char *) I_VideoBuffer;
+     line_out = (unsigned char *) DG_ScreenBuffer;
+diff --git a/doomgeneric/r_draw.c b/doomgeneric/r_draw.c
+index 34f0519..b9d02b1 100644
+--- a/doomgeneric/r_draw.c
++++ b/doomgeneric/r_draw.c
+@@ -130,23 +130,32 @@ void R_DrawColumn (void)
+     frac = dc_texturemid + (dc_yl-centery)*fracstep; 
+ 
+     {
++        /* frac<<9: o indice (frac>>16)&127 vira um unico srli, e a soma continua modular */
+         const byte *src = dc_source;
+         const byte *cm = dc_colormap;
++        uint32_t f = (uint32_t)frac << 9;
++        const uint32_t fs = (uint32_t)fracstep << 9;
+         int n = count + 1;
+-        while (n >= 4)
++        if (n & 1)
+         {
+-            dest[0] = cm[src[(frac>>FRACBITS)&127]]; frac += fracstep;
+-            dest[SCREENWIDTH] = cm[src[(frac>>FRACBITS)&127]]; frac += fracstep;
+-            dest[2*SCREENWIDTH] = cm[src[(frac>>FRACBITS)&127]]; frac += fracstep;
+-            dest[3*SCREENWIDTH] = cm[src[(frac>>FRACBITS)&127]]; frac += fracstep;
+-            dest += 4*SCREENWIDTH;
+-            n -= 4;
++            *dest = cm[src[f >> 25]]; f += fs;
++            dest += SCREENWIDTH;
+         }
+-        while (n-- > 0)
++        if (n & 2)
+         {
+-            *dest = cm[src[(frac>>FRACBITS)&127]];
+-            dest += SCREENWIDTH;
+-            frac += fracstep;
++            dest[0] = cm[src[f >> 25]]; f += fs;
++            dest[SCREENWIDTH] = cm[src[f >> 25]]; f += fs;
++            dest += 2*SCREENWIDTH;
++        }
++        n >>= 2;
++#pragma GCC unroll 1
++        while (n--)
++        {
++            dest[0] = cm[src[f >> 25]]; f += fs;
++            dest[SCREENWIDTH] = cm[src[f >> 25]]; f += fs;
++            dest[2*SCREENWIDTH] = cm[src[f >> 25]]; f += fs;
++            dest[3*SCREENWIDTH] = cm[src[f >> 25]]; f += fs;
++            dest += 4*SCREENWIDTH;
+         }
+     }
+ 
+@@ -327,22 +336,21 @@ void R_DrawFuzzColumn (void)
+     // Looks like an attempt at dithering,
+     //  using the colormap #6 (of 0-31, a bit
+     //  brighter than average).
+-    do 
+     {
+-	// Lookup framebuffer, and retrieve
+-	//  a pixel that is either one column
+-	//  left or right of the current one.
+-	// Add index from colormap to index.
+-	*dest = colormaps[6*256+dest[fuzzoffset[fuzzpos]]]; 
+-
+-	// Clamp table lookup index.
+-	if (++fuzzpos == FUZZTABLE) 
+-	    fuzzpos = 0;
+-	
+-	dest += SCREENWIDTH;
+-
+-	frac += fracstep; 
+-    } while (count--); 
++        /* fuzzpos, colormap e a tabela em registradores: o store de byte nao deixa o compilador provar que nao aliasam */
++        const byte *cm6 = colormaps + 6*256;
++        const int *fz = fuzzoffset;
++        int fp = fuzzpos;
++        int n = count + 1;
++        do
++        {
++            *dest = cm6[dest[fz[fp]]];
++            if (++fp == FUZZTABLE)
++                fp = 0;
++            dest += SCREENWIDTH;
++        } while (--n);
++        fuzzpos = fp;
++    }
+ } 
+ 
+ // low detail mode version

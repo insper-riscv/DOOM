@@ -168,8 +168,18 @@ void doom_measure_init(void)
     doom_measure_snapshot(0);
 }
 
+static uint32_t meas_last_lo;
+
 void doom_measure_snapshot(uint32_t frames)
 {
+    /* Ciclos de cada quadro, para achar o quadro mais lento (o que causa o lag) */
+    uint32_t now_lo = (uint32_t)doom_read_cycle();
+
+    if (frames >= 1u && frames <= DOOM_MEAS_FRAME_MAX)
+    {
+        MEAS[DOOM_MEAS_FRAME_OFF + frames - 1u] = now_lo - meas_last_lo;
+    }
+    meas_last_lo = now_lo;
     if (frames % DOOM_MEAS_STEP != 0)
     {
         return;
@@ -331,7 +341,7 @@ void DG_SetWindowTitle(const char *title)
     (void)title;
 }
 
-void DG_DrawFrame(void)
+__attribute__((noipa)) void DG_DrawFrame(void)
 {
     /* Instantaneo dos contadores, antes de qualquer outro trabalho desta chamada */
     doom_measure_snapshot(frames_drawn + 1u);

@@ -200,6 +200,20 @@ int main(void)
     }
     expect_empty("menu");
 
+    /* menu ativo: o Espaco confirma como o Enter (0x29 e o make do Espaco) */
+    FEED(0x29, 0xF0, 0x29);
+    expect(1, KEY_ENTER, "espaco no menu");
+    expect(0, KEY_ENTER, "solta espaco no menu");
+    expect_empty("espaco no menu");
+
+    /* fora do menu, com o gancho instalado, o Enter faz o papel do botao de usar (E) */
+    menu_active = 0;
+    FEED(0x5A, 0xF0, 0x5A);
+    expect(1, 'e', "enter fora do menu");
+    expect(0, 'e', "solta enter fora do menu");
+    expect_empty("enter fora do menu");
+    menu_active = 1;
+
     /* digitacao de texto no menu (nome de save): as letras normais, WASD inclusive */
     menu_active = 0;
     FEED(0x1D, 0xF0, 0x1D, 0x1C, 0xF0, 0x1C, 0x1B, 0xF0, 0x1B, 0x23, 0xF0, 0x23, 0x24, 0xF0, 0x24);
