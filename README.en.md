@@ -74,26 +74,43 @@ WAD_SET="doom doom2 tnt master" MENU=1 VIDEO=1 INTERACTIVE=1 ./scripts/image.sh
 
 `image.sh` joins the chosen WADs into `build-board/wads.bin`, lists each one with its address and SHA-256, and prints the `load-ram` that takes them to the SDRAM in one go. To change the set, run `image.sh` again with another `WAD_SET` and load the new image. The full use of the menu is in [docs/en/BOARD.md](docs/en/BOARD.md), section 13.
 
-## 6. The menu screens and how they were made
+## 6. The keys and how the menu was made
 
-### 6.1. Screens and screen changes
+### 6.1. Keys of the game choice menu
 
-The program shows the menu before the game and returns to it when the game ends. Each screen changes with a key, and the table below is the complete map.
+| Key | What it does |
+| :--- | :--- |
+| Up arrow or W | Previous item |
+| Down arrow or S | Next item |
+| Left arrow or A | In the Master Levels list, goes to the left column |
+| Right arrow or D | In the Master Levels list, goes to the right column |
+| Enter, E or space | Chooses the game; on "Master Levels", opens the list; in the list, opens the map |
+| Esc or Backspace | In the Master Levels list, goes back to the game choice |
 
-| Screen | What it shows | Key | Goes to |
-| :--- | :--- | :--- | :--- |
-| Game choice | Title "CHOOSE YOUR GAME" and one item per game (large title and description below); the chosen one is red with the DOOM skull blinking next to it | Arrows or W and S | The same screen, with another item |
-| Game choice | The same | Enter, E or space on a game | The chosen game |
-| Game choice | The same | Enter, E or space on "Master Levels" | Master Levels list |
-| Master Levels | 20 maps in two columns, each with its name and the map it enters (`MAP01`, `MAP25`...) | Arrows or W and S | Another map of the column |
-| Master Levels | The same | Left and right arrows, or A and D | The other column |
-| Master Levels | The same | Esc or Backspace | Game choice |
-| Master Levels | The same | Enter, E or space | DOOM II with the chosen map |
-| Game | DOOM, with the usual controls | Quit Game (F10 and Y), end by error (3 s later) or 15 minutes without a key | Game choice |
+### 6.2. Keys of the game
 
-Choosing a game opens DOOM with its WAD. Choosing a Master Levels map opens DOOM II with the map's WAD already loaded, straight into its map. When the game returns, the menu reappears from scratch, on the first screen.
+They are the same in the three games and in Master Levels.
 
-### 6.2. How it was made
+| Key | What it does |
+| :--- | :--- |
+| W | Moves forward |
+| S | Moves backward |
+| A | Strafes left |
+| D | Strafes right |
+| Left arrow | Turns left |
+| Right arrow | Turns right |
+| E | Uses and opens doors |
+| Space or Ctrl | Fires |
+| Shift | Runs |
+| Alt with the left and right arrows | Strafes |
+| 1 to 7 | Switches weapon |
+| Tab | Shows the map |
+| Esc | Opens the game menu |
+| F10 and then Y | Quit Game: returns to the game choice menu |
+
+In the menus of the game itself the four arrows navigate, and W S A D and E act as up, down, left, right and Enter, except when typing the name of a saved game, where they are letters. The up and down keys have no function during play.
+
+### 6.3. How the menu was made
 
 1. **Art from the WAD itself.** The menu carries no image. It reads from the first WAD of the list the background (the title screen, darkened by one of the light maps of the WAD), the skull, the small font of the game and the 256-color palette. The repository still holds no DOOM file.
 2. **A 320x200 screen of indices.** Each screen is built in an 8-bit-per-pixel buffer, the same format as the game, and the text is drawn letter by letter with the cutouts of the font, enlarged 2 times in the titles. The chosen item uses the original colors of the font, which are reddish. The others swap each color for a gray of similar brightness, and the descriptions use a darker gray.

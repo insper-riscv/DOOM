@@ -74,26 +74,43 @@ WAD_SET="doom doom2 tnt master" MENU=1 VIDEO=1 INTERACTIVE=1 ./scripts/image.sh
 
 O `image.sh` junta as WADs escolhidas em `build-board/wads.bin`, lista cada uma com o endereço e o SHA-256 e imprime o `load-ram` que as leva à SDRAM de uma vez. Para trocar de conjunto, rode o `image.sh` de novo com outro `WAD_SET` e carregue a nova imagem. O uso completo do menu está em [docs/pt-br/PLACA.md](docs/pt-br/PLACA.md), seção 13.
 
-## 6. As telas do menu e como foram feitas
+## 6. As teclas e como o menu foi feito
 
-### 6.1. Telas e mudanças de tela
+### 6.1. Teclas do menu de escolha
 
-O programa mostra o menu antes do jogo e volta a ele quando o jogo termina. Cada tela troca por uma tecla, e a tabela abaixo é o mapa completo.
+| Tecla | O que faz |
+| :--- | :--- |
+| Seta para cima ou W | Item anterior |
+| Seta para baixo ou S | Próximo item |
+| Seta esquerda ou A | Na lista do Master Levels, vai para a coluna da esquerda |
+| Seta direita ou D | Na lista do Master Levels, vai para a coluna da direita |
+| Enter, E ou espaço | Escolhe o jogo; em "Master Levels", abre a lista; na lista, abre a fase |
+| Esc ou Backspace | Na lista do Master Levels, volta à escolha do jogo |
 
-| Tela | O que mostra | Tecla | Vai para |
-| :--- | :--- | :--- | :--- |
-| Escolha do jogo | Título "CHOOSE YOUR GAME" e um item por jogo (título grande e descrição embaixo); o escolhido fica em vermelho com a caveira do DOOM piscando ao lado | Setas ou W e S | A mesma tela, com outro item |
-| Escolha do jogo | O mesmo | Enter, E ou espaço num jogo | O jogo escolhido |
-| Escolha do jogo | O mesmo | Enter, E ou espaço em "Master Levels" | Lista do Master Levels |
-| Master Levels | 20 fases em duas colunas, cada uma com o nome e o mapa em que entra (`MAP01`, `MAP25`...) | Setas ou W e S | Outra fase da coluna |
-| Master Levels | O mesmo | Setas esquerda e direita, ou A e D | A outra coluna |
-| Master Levels | O mesmo | Esc ou Backspace | Escolha do jogo |
-| Master Levels | O mesmo | Enter, E ou espaço | O DOOM II com a fase escolhida |
-| Jogo | O DOOM, com os controles de sempre | Quit Game (F10 e Y), fim por erro (3 s depois) ou 15 minutos sem tecla | Escolha do jogo |
+### 6.2. Teclas do jogo
 
-Escolher um jogo abre o DOOM com a WAD dele. Escolher uma fase do Master Levels abre o DOOM II com a WAD da fase já carregada, direto no mapa dela. Ao voltar do jogo, o menu reaparece do zero, na primeira tela.
+São as mesmas nos três jogos e no Master Levels.
 
-### 6.2. Como foi feito
+| Tecla | O que faz |
+| :--- | :--- |
+| W | Anda para a frente |
+| S | Anda para trás |
+| A | Desliza para a esquerda |
+| D | Desliza para a direita |
+| Seta esquerda | Gira para a esquerda |
+| Seta direita | Gira para a direita |
+| E | Usa e abre portas |
+| Espaço ou Ctrl | Atira |
+| Shift | Corre |
+| Alt com as setas esquerda e direita | Desliza de lado |
+| 1 a 7 | Troca de arma |
+| Tab | Mostra o mapa |
+| Esc | Abre o menu do jogo |
+| F10 e depois Y | Quit Game: volta ao menu de escolha do jogo |
+
+Nos menus do próprio jogo as quatro setas navegam, e W S A D e E fazem o papel de cima, baixo, esquerda, direita e Enter, exceto na digitação do nome de um jogo salvo, onde são letras. As teclas de cima e de baixo não têm função durante a partida.
+
+### 6.3. Como o menu foi feito
 
 1. **Arte da própria WAD.** O menu não traz imagem nenhuma. Ele lê da primeira WAD da lista o fundo (a tela de título, escurecida por um dos mapas de luz da WAD), a caveira, a fonte pequena do jogo e a paleta de 256 cores. O repositório continua sem nenhum arquivo do DOOM.
 2. **Uma tela de 320x200 de índices.** Cada tela é montada num buffer de 8 bits por pixel, o mesmo formato do jogo, e o texto é desenhado letra a letra com os recortes da fonte, ampliados 2 vezes nos títulos. O item escolhido usa as cores originais da fonte, que são avermelhadas. Os outros trocam cada cor por um cinza de brilho parecido, e as descrições usam um cinza mais escuro.
