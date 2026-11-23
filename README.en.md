@@ -74,6 +74,35 @@ WAD_SET="doom doom2 tnt master" MENU=1 VIDEO=1 INTERACTIVE=1 ./scripts/image.sh
 
 `image.sh` joins the chosen WADs into `build-board/wads.bin`, lists each one with its address and SHA-256, and prints the `load-ram` that takes them to the SDRAM in one go. To change the set, run `image.sh` again with another `WAD_SET` and load the new image. The full use of the menu is in [docs/en/BOARD.md](docs/en/BOARD.md), section 13.
 
-## 6. Contributing
+## 6. The menu screens and how they were made
+
+### 6.1. Screens and screen changes
+
+The program shows the menu before the game and returns to it when the game ends. Each screen changes with a key, and the table below is the complete map.
+
+| Screen | What it shows | Key | Goes to |
+| :--- | :--- | :--- | :--- |
+| Game choice | Title "CHOOSE YOUR GAME" and one item per game (large title and description below); the chosen one is red with the DOOM skull blinking next to it | Arrows or W and S | The same screen, with another item |
+| Game choice | The same | Enter, E or space on a game | The chosen game |
+| Game choice | The same | Enter, E or space on "Master Levels" | Master Levels list |
+| Master Levels | 20 maps in two columns, each with its name and the map it enters (`MAP01`, `MAP25`...) | Arrows or W and S | Another map of the column |
+| Master Levels | The same | Left and right arrows, or A and D | The other column |
+| Master Levels | The same | Esc or Backspace | Game choice |
+| Master Levels | The same | Enter, E or space | DOOM II with the chosen map |
+| Game | DOOM, with the usual controls | Quit Game (F10 and Y), end by error (3 s later) or 15 minutes without a key | Game choice |
+
+Choosing a game opens DOOM with its WAD. Choosing a Master Levels map opens DOOM II with the map's WAD already loaded, straight into its map. When the game returns, the menu reappears from scratch, on the first screen.
+
+### 6.2. How it was made
+
+1. **Art from the WAD itself.** The menu carries no image. It reads from the first WAD of the list the background (the title screen, darkened by one of the light maps of the WAD), the skull, the small font of the game and the 256-color palette. The repository still holds no DOOM file.
+2. **A 320x200 screen of indices.** Each screen is built in an 8-bit-per-pixel buffer, the same format as the game, and the text is drawn letter by letter with the cutouts of the font, enlarged 2 times in the titles. The chosen item uses the original colors of the font, which are reddish. The others swap each color for a gray of similar brightness, and the descriptions use a darker gray.
+3. **Delivery to the video.** The buffer and the palette go straight to the video peripheral, the same way the game writes a frame. The skull blinks every 250 ms, and the screen is redrawn only when something changes.
+4. **Keyboard.** The menu reads the events of the same PS/2 keyboard as the game, with no new driver.
+5. **From the choice to the game.** The choice becomes the arguments of DOOM: the name of the base WAD and, in Master Levels, the WAD of the map and the map it enters. The WADs sit in a single image in the SDRAM, with a table of name, address and size, and the game opens each one by name.
+6. **Back to the menu.** When the game ends, the program restores the initial data and starts over from the beginning. Since the menu is the first thing the program does, it reappears by itself, with nothing reloaded into the SDRAM.
+7. **Checking without the board.** `scripts/menu_test.sh` runs the menu on Spike with a key script, checks the choice returned and saves each screen as a PNG in `build-layout/menu-png/`. The images are not kept in the repository because they show the DOOM art.
+
+## 7. Contributing
 
 Every change enters through a Pull Request to `main`. The general rules of the organization are in [Insper-RISC-V](https://github.com/insper-riscv/Insper-RISC-V/blob/main/CONTRIBUTING.en.md).
