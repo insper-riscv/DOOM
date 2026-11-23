@@ -11,7 +11,10 @@
  *  - build do Spike: a WAD e embutida no ELF (objcopy -I binary) e os
  *    simbolos _binary_doom1_wad_start e _binary_doom1_wad_end a delimitam;
  *  - placa: DOOM_WAD_ADDR e DOOM_WAD_SIZE (-D) apontam para a regiao da SDRAM
- *    onde a JTAG deixou a WAD.
+ *    onde a JTAG deixou a WAD;
+ *  - menu (DOOM_MENU): varias WADs na SDRAM, cada uma no endereco da tabela wad_table.h que
+ *    scripts/wads.sh gera; o jogo as abre pelo nome (doom2.wad, plutonia.wad, attack.wad, ...),
+ *    sem diferenciar maiusculas de minusculas e sem olhar a pasta.
  */
 
 #include <stddef.h>
@@ -21,6 +24,104 @@
 #include "doomtype.h"
 #include "w_file.h"
 #include "z_zone.h"
+
+#ifdef DOOM_MENU
+
+#include "wad_table.h"
+
+/* Uma WAD aberta: o w_file.c ve so o inicio (wad_file_t); a entrada da tabela vem logo depois */
+typedef struct
+{
+    wad_file_t base;
+    const struct doom_wad_entry *entry;
+} mem_wad_t;
+
+/* Minuscula de um caractere ASCII */
+static char lower(char c)
+{
+    return (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+}
+
+/* Acha a WAD da tabela pelo nome do arquivo, ignorando a pasta e as maiusculas; NULL se nao ha */
+static const struct doom_wad_entry *wad_lookup(const char *path)
+{
+    const char *name = path;
+
+    for (const char *p = path; *p != '\0'; p++)
+    {
+        if (*p == '/' || *p == '\\')
+        {
+            name = p + 1;
+        }
+    }
+    for (int i = 0; i < DOOM_WAD_COUNT; i++)
+    {
+        const char *want = doom_wad_table[i].name;
+        const char *got = name;
+
+        while (*want != '\0' && lower(*got) == *want)
+        {
+            want++;
+            got++;
+        }
+        if (*want == '\0' && *got == '\0')
+        {
+            return &doom_wad_table[i];
+        }
+    }
+    return NULL;
+}
+
+/* Informa ao w_wad.c se o caminho e uma WAD da tabela (substitui o fopen do M_FileExists) */
+boolean __wrap_M_FileExists(char *filename)
+{
+    return wad_lookup(filename) != NULL;
+}
+
+extern wad_file_class_t stdc_wad_file;
+
+/* Abre uma WAD da tabela: a estrutura vive no heap da zona, sem arquivo associado */
+static wad_file_t *mem_wad_open(char *path)
+{
+    const struct doom_wad_entry *entry = wad_lookup(path);
+    mem_wad_t *result;
+
+    if (entry == NULL)
+    {
+        return NULL;
+    }
+    result = Z_Malloc(sizeof(mem_wad_t), PU_STATIC, 0);
+    result->base.file_class = &stdc_wad_file;
+    result->base.mapped = NULL;
+    result->base.length = entry->size;
+    result->entry = entry;
+    return &result->base;
+}
+
+/* Fecha a WAD: nada a liberar alem da estrutura */
+static void mem_wad_close(wad_file_t *wad)
+{
+    Z_Free(wad);
+}
+
+/* Copia buffer_len bytes a partir de offset, truncando no fim da WAD aberta */
+static size_t mem_wad_read(wad_file_t *wad, unsigned int offset, void *buffer, size_t buffer_len)
+{
+    const struct doom_wad_entry *entry = ((mem_wad_t *)wad)->entry;
+
+    if (offset >= entry->size)
+    {
+        return 0;
+    }
+    if (buffer_len > entry->size - offset)
+    {
+        buffer_len = entry->size - offset;
+    }
+    memcpy(buffer, (const uint8_t *)(uintptr_t)entry->addr + offset, buffer_len);
+    return buffer_len;
+}
+
+#else
 
 /* Nome que o jogo usa para a WAD (-iwad); qualquer outro caminho nao existe */
 #define DOOM_WAD_NAME "doom1.wad"
@@ -92,6 +193,8 @@ static size_t mem_wad_read(wad_file_t *wad, unsigned int offset,
     memcpy(buffer, wad_image() + offset, buffer_len);
     return buffer_len;
 }
+
+#endif /* DOOM_MENU */
 
 wad_file_class_t stdc_wad_file =
 {

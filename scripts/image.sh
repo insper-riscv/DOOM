@@ -4,7 +4,8 @@
 # do `riscv-tools` para carregar, acompanhar e conferir a execucao na DE0-CV. Nao toca a
 # placa: so compila e escreve texto.
 # Variaveis: INSPER_RISCV (raiz de um clone completo do Insper-RISC-V, que o riscv-tools usa
-# como --root; padrao $HOME/Insper-RISC-V), OPT e PLATFORM_DIR (repassadas ao build.sh).
+# como --root; padrao $HOME/Insper-RISC-V), OPT e PLATFORM_DIR (repassadas ao build.sh). MENU=1 (com VIDEO=1 e
+# INTERACTIVE=1) monta o menu com as WADs da pasta de `fetch.sh --wad-dir` (WAD_SET escolhe os jogos).
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -12,18 +13,27 @@ cd "$(dirname "$0")/.."
 
 TARGET=board OUT=build-board sh build.sh
 
-if [ ! -f doom1.wad ]; then
-  echo "doom1.wad ausente: rode fetch.sh" >&2
-  exit 1
+if [ "${MENU:-0}" = 1 ]; then
+  # Menu: as WADs do usuario, juntas em $OUT/wads.bin pelo scripts/wads.sh, e o mapa que ele calculou
+  . build-board/wads.env
+  WAD_FILE=build-board/wads.bin
+  WAD_LABEL="wads.bin (menu)"
+else
+  WAD_FILE=doom1.wad
+  WAD_LABEL=doom1.wad
+  if [ ! -f doom1.wad ]; then
+    echo "doom1.wad ausente: rode fetch.sh" >&2
+    exit 1
+  fi
 fi
 BIN_SIZE=$(wc -c < build-board/doom.bin)
 if [ "$((RAM_ORIGIN + BIN_SIZE))" -gt "$((WAD_ADDR))" ]; then
   echo "o binario ($BIN_SIZE bytes) passa do endereco da WAD ($WAD_ADDR)" >&2
   exit 1
 fi
-WAD_BYTES=$(wc -c < doom1.wad)
+WAD_BYTES=$(wc -c < "$WAD_FILE")
 if [ "$WAD_BYTES" -ne "$WAD_SIZE" ]; then
-  echo "doom1.wad tem $WAD_BYTES bytes e o build espera $WAD_SIZE: rode fetch.sh" >&2
+  echo "$WAD_FILE tem $WAD_BYTES bytes e o build espera $WAD_SIZE: rode fetch.sh" >&2
   exit 1
 fi
 
@@ -34,14 +44,14 @@ RT='riscv-tools --root "$INSPER_RISCV" --config src/cyclone-v/doom/config.yaml'
 
 cat <<EOF
 Imagem: build-board/doom.bin ($BIN_SIZE bytes, a partir de $RAM_ORIGIN)
-Mapa da SDRAM: WAD em $WAD_ADDR, framebuffer em $FB_ADDR, heap desde $HEAP_START,
+Mapa da SDRAM: $WAD_LABEL em $WAD_ADDR ($WAD_BYTES bytes), framebuffer em $FB_ADDR, heap desde $HEAP_START,
 resultado em $RESULT_ADDR (palavra $RES_WORD), campainha em $LAUNCH_ADDR.
 
 Com a placa programada com o .sof da plataforma doom e o carregador gravado na banca A
 (docs/pt-br/PLACA.md, secao 4), e INSPER_RISCV apontando para o clone do Insper-RISC-V:
 
 1. Carregar a imagem e a WAD, conferir a leitura de volta e tocar a campainha:
-   $RT load-ram build-board/doom.bin --wad doom1.wad --wad-address $WAD_ADDR
+   $RT load-ram build-board/doom.bin --wad $WAD_FILE --wad-address $WAD_ADDR
 
 2. Acompanhar o console pela JTAG UART (o jogo imprime o progresso a cada 100 quadros e,
    no fim, repete o resumo a cada 2 s; Ctrl-C encerra):

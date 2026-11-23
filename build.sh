@@ -44,8 +44,29 @@ case "$TARGET" in
     ;;
 esac
 
-if [ ! -f "$DG/Makefile" ] || [ ! -f doom1.wad ]; then
-  echo "doomgeneric/ ou doom1.wad ausente: rode fetch.sh" >&2
+# MENU=1: menu de escolha do jogo antes do DOOM (port/doom_menu.c) com varias WADs na SDRAM, as suas, de uma pasta
+# (WAD_DIR, ou a que o `fetch.sh --wad-dir` guardou), no lugar da doom1.wad shareware. scripts/wads.sh junta as WADs em
+# $OUT/wads.bin, escreve a tabela $OUT/wad_table.h e o mapa da SDRAM $OUT/wads.env, que passa a valer no lugar do
+# padrao do scripts/layout.sh. WAD_SET escolhe os jogos (padrao "doom doom2 plutonia master"). Pede VIDEO=1 e
+# INTERACTIVE=1, porque o menu usa o video e o teclado e o jogo volta a ele ao reiniciar.
+WAD_FILE=doom1.wad
+if [ "${MENU:-0}" = 1 ]; then
+  if [ "$TARGET" = spike ]; then
+    echo "MENU=1 pede TARGET=layout ou board (o mapa da SDRAM)" >&2
+    exit 1
+  fi
+  if [ "${VIDEO:-0}" != 1 ] || [ "${INTERACTIVE:-0}" != 1 ]; then
+    echo "MENU=1 pede VIDEO=1 e INTERACTIVE=1" >&2
+    exit 1
+  fi
+  mkdir -p "$OUT"
+  sh scripts/wads.sh "$OUT"
+  . "$OUT/wads.env"
+  WAD_FILE="$OUT/wads.bin"
+fi
+
+if [ ! -f "$DG/Makefile" ] || [ ! -f "$WAD_FILE" ]; then
+  echo "doomgeneric/ ou $WAD_FILE ausente: rode fetch.sh" >&2
   exit 1
 fi
 if [ "$TARGET" = board ] && [ ! -f "$RT/doom_clock.c" ]; then
@@ -127,6 +148,19 @@ if [ "${VIDEO:-0}" = 1 ]; then
     PORT_DEFS="$PORT_DEFS -DDOOM_VCRC_FRAMES=${VCRC_FRAMES}u"
   fi
 fi
+if [ "${MENU:-0}" = 1 ]; then
+  PORT_DEFS="$PORT_DEFS -DDOOM_MENU -I$OUT"
+  DOOM_SRC_PORT="$DOOM_SRC_PORT doom_menu"
+  # MENU_SCRIPT roda um roteiro de teclas no lugar do teclado (u d l r mudam a escolha, e escolhe, b volta, p guarda
+  # a tela) e termina na escolha: so para conferir o menu no Spike (TARGET=layout), com as telas em $OUT/spike.out
+  if [ -n "${MENU_SCRIPT:-}" ]; then
+    PORT_DEFS="$PORT_DEFS -DDOOM_MENU_SCRIPT=\"$MENU_SCRIPT\" -DDOOM_MENU_DUMP"
+    # MENU_STOP=0 segue para o jogo depois da escolha, para ver no Spike o DOOM abrir a WAD escolhida
+    if [ "${MENU_STOP:-1}" != 0 ]; then
+      PORT_DEFS="$PORT_DEFS -DDOOM_MENU_STOP"
+    fi
+  fi
+fi
 if [ "${INTERACTIVE:-0}" = 1 ]; then
   # No modo interativo o Quit Game e o fim por erro reiniciam o programa (port/doom_runtime.c), com o .data
   # guardado em DOOM_DATA_BACKUP_ADDR
@@ -175,7 +209,7 @@ esac
 if [ "$TARGET" != board ]; then
   riscv32-unknown-elf-objcopy -I binary -O elf32-littleriscv -B riscv:rv32 \
     --rename-section ".data=$WAD_SECTION,alloc,load,readonly,data,contents" \
-    doom1.wad "$OUT/obj/wad.o"
+    "$WAD_FILE" "$OUT/obj/wad.o"
 fi
 
 # shellcheck disable=SC2086

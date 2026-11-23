@@ -10,7 +10,7 @@ Só código escrito para este projeto, sob Apache 2.0.
 
 | Item | Função |
 | :--- | :--- |
-| `fetch.sh` | Baixa a `doomgeneric` em um commit fixado e o WAD shareware, e confere o SHA-256 de cada um |
+| `fetch.sh` | Baixa a `doomgeneric` em um commit fixado e o WAD shareware, e confere o SHA-256 de cada um; com `--wad-dir PASTA` usa as suas WADs no lugar da shareware |
 | `build.sh` | Compila a porta para `rv32im` com `ilp32` no container `dev_tools`, nos alvos `spike`, `layout` e `board` |
 | `run.sh` | Executa o `-timedemo demo1` no Spike e confere o CRC-32 do último quadro |
 | `port/` | Camada de plataforma (`DG_*`), backend de WAD em memória, runtime e linker script |

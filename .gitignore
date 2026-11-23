@@ -16,3 +16,4 @@
 
 # HOME temporário das ferramentas (semgrep)
 .home/
+.wad-dir

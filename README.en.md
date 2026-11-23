@@ -10,7 +10,7 @@ Only code written for this project, under Apache 2.0.
 
 | Item | Purpose |
 | :--- | :--- |
-| `fetch.sh` | Downloads `doomgeneric` at a pinned commit and the shareware WAD, and checks the SHA-256 of each |
+| `fetch.sh` | Downloads `doomgeneric` at a pinned commit and the shareware WAD, and checks the SHA-256 of each; with `--wad-dir FOLDER` it uses your own WADs in place of the shareware |
 | `build.sh` | Builds the port for `rv32im` with `ilp32` in the `dev_tools` container, for the `spike`, `layout` and `board` targets |
 | `run.sh` | Runs `-timedemo demo1` on Spike and checks the CRC-32 of the last frame |
 | `port/` | Platform layer (`DG_*`), in-memory WAD backend, runtime and linker script |

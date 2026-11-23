@@ -246,6 +246,53 @@ static void report(uint32_t frame, uint32_t ms, uint32_t *last_ms, uint32_t *las
     *last_frame = frame;
 }
 
+/* Mostra uma tela do menu: paleta e quadro direto no VIDEO, e liga a exibicao */
+void doom_video_present(const uint8_t *indices, const uint16_t *palette12_in)
+{
+#ifdef DOOM_VIDEO
+    for (uint32_t i = 0; i < 256u; i++)
+    {
+        VID_PALETTE[i] = palette12_in[i];
+    }
+    frame_write((const uint32_t *)(const void *)indices);
+    VID_CONTROL = 1u;
+#else
+    (void)indices;
+    (void)palette12_in;
+#endif
+}
+
+/* Imprime a tela do menu no console, para o Spike (DOOM_MENU_DUMP) */
+void doom_video_snapshot(const uint8_t *indices, const uint16_t *palette12_in)
+{
+#ifdef DOOM_MENU_DUMP
+    static const char hex[] = "0123456789abcdef";
+    char line[2u * (uint32_t)DOOMGENERIC_RESX + 1u];
+
+    printf("MENUDUMP BEGIN\n");
+    for (uint32_t y = 0; y < (uint32_t)DOOMGENERIC_RESY; y++)
+    {
+        for (uint32_t x = 0; x < (uint32_t)DOOMGENERIC_RESX; x++)
+        {
+            uint8_t v = indices[y * (uint32_t)DOOMGENERIC_RESX + x];
+
+            line[2u * x] = hex[v >> 4];
+            line[2u * x + 1u] = hex[v & 0xFu];
+        }
+        line[2u * (uint32_t)DOOMGENERIC_RESX] = '\0';
+        printf("%s\n", line);
+    }
+    for (uint32_t i = 0; i < 256u; i++)
+    {
+        printf("%03x\n", (unsigned)palette12_in[i]);
+    }
+    printf("MENUDUMP END\n");
+#else
+    (void)indices;
+    (void)palette12_in;
+#endif
+}
+
 void doom_video_frame(uint32_t frame)
 {
     static uint32_t report_ms;
