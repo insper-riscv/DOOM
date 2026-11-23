@@ -10,7 +10,7 @@ Só código escrito para este projeto, sob Apache 2.0.
 
 | Item | Função |
 | :--- | :--- |
-| `fetch.sh` | Baixa a `doomgeneric` em um commit fixado e o WAD shareware, e confere o SHA-256 de cada um |
+| `fetch.sh` | Baixa a `doomgeneric` em um commit fixado e o WAD shareware, e confere o SHA-256 de cada um; com `--wad-dir PASTA` usa as suas WADs no lugar da shareware |
 | `build.sh` | Compila a porta para `rv32im` com `ilp32` no container `dev_tools`, nos alvos `spike`, `layout` e `board` |
 | `run.sh` | Executa o `-timedemo demo1` no Spike e confere o CRC-32 do último quadro |
 | `port/` | Camada de plataforma (`DG_*`), backend de WAD em memória, runtime e linker script |
@@ -43,6 +43,37 @@ O alvo `board` do `build.sh` gera o binário da plataforma `doom` do Insper-RISC
 ./fetch.sh && ./scripts/image.sh
 ```
 
-## 5. Contribuição
+## 5. Escolher os jogos que vão para a SDRAM
+
+Com o menu (`MENU=1`), a placa carrega as WADs que você escolher, e só elas aparecem no menu. A escolha é a variável `WAD_SET`, uma lista de jogos separados por espaço, na ordem em que aparecem.
+
+| Nome | Jogo | WAD procurada na pasta |
+| :--- | :--- | :--- |
+| `doom` | The Ultimate DOOM, 4 episódios | `doom.wad` |
+| `doom2` | DOOM II | `doom2.wad` |
+| `plutonia` | The Plutonia Experiment | `plutonia.wad` |
+| `tnt` | TNT: Evilution | `tnt.wad` |
+| `master` | Master Levels, 20 fases (usa o DOOM II como base) | As WADs da pasta `master`, com o `DOOM2.MAP` |
+
+Os quatro jogos juntos não cabem nos 64 MB da SDRAM com o heap do jogo, então escolha até três mais o `master`. O `scripts/wads.sh` calcula o mapa e recusa um conjunto que não cabe, dizendo o que tirar.
+
+| `WAD_SET` | WADs na SDRAM | Cabe |
+| :--- | ---: | :--- |
+| `doom doom2 plutonia master` (padrão) | 48,2 MB | Sim |
+| `doom doom2 tnt master` | 49,0 MB | Sim |
+| `doom doom2 master` | 30,8 MB | Sim |
+| `doom2` | 14,6 MB | Sim |
+| `doom doom2 plutonia tnt` | 62,6 MB | Não |
+
+Os tamanhos são os das WADs originais v1.9. Para escolher, aponte a pasta das suas WADs uma vez e monte a imagem com o `WAD_SET` desejado:
+
+```bash
+./fetch.sh --wad-dir /caminho/das/wads
+WAD_SET="doom doom2 tnt master" MENU=1 VIDEO=1 INTERACTIVE=1 ./scripts/image.sh
+```
+
+O `image.sh` junta as WADs escolhidas em `build-board/wads.bin`, lista cada uma com o endereço e o SHA-256 e imprime o `load-ram` que as leva à SDRAM de uma vez. Para trocar de conjunto, rode o `image.sh` de novo com outro `WAD_SET` e carregue a nova imagem. O uso completo do menu está em [docs/pt-br/PLACA.md](docs/pt-br/PLACA.md), seção 13.
+
+## 6. Contribuição
 
 Cada alteração entra por Pull Request para a `main`. As regras gerais da organização estão em [Insper-RISC-V](https://github.com/insper-riscv/Insper-RISC-V/blob/main/CONTRIBUTING.md).

@@ -52,6 +52,18 @@ enum doom_vstat_word
     DOOM_VST_HEAD_WORDS = 16
 };
 
+/*
+ * Mostra uma tela de 320x200 indices (alinhada a 4 bytes) com a paleta RGB444 dada, e liga a exibicao. E o que o
+ * menu de escolha do jogo (doom_menu.c) usa antes de o DOOM desenhar o primeiro quadro.
+ */
+void doom_video_present(const uint8_t *indices, const uint16_t *palette12);
+
+/*
+ * Guarda a tela do menu para conferencia no Spike (DOOM_MENU_DUMP): imprime os indices e a paleta no console, que
+ * scripts/menu_png.py converte em PNG. Sem DOOM_MENU_DUMP nao faz nada.
+ */
+void doom_video_snapshot(const uint8_t *indices, const uint16_t *palette12);
+
 /* Chamada por DG_DrawFrame com o numero do quadro (1, 2, ...): apresenta e atualiza as estatisticas */
 void doom_video_frame(uint32_t frame);
 

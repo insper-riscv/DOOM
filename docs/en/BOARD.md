@@ -209,3 +209,51 @@ With `INTERACTIVE=1` the program has a clean restart: it restores `.data` from t
 Inactivity counts, by the game clock (`DG_GetTicksMs`), the time without any keyboard byte (key pressed, released or repeated). After `DOOM_IDLE_RESET_MS` (15 min, or `IDLE_MS=N` in ms on `build.sh`), the game restarts if it is in a game, an open menu, an intermission or the finale. On the title screen and in the attract demo, with the menu closed, it does nothing. The count starts at the first frame of each boot, so it never fires during boot.
 
 On Spike, `IDLE_MS=20000 TESTKEYS=3 VIDEO=1 INTERACTIVE=1 TARGET=layout` opens the menu at frame 300 and presses a key at frame 900: the game restarts 20 s after the last key (at 16.6 s of clock, it restarts at 36.6 s) and not 20 s after the menu opened.
+
+## 13. Game menu and your own WADs
+
+With `MENU=1` (which needs `VIDEO=1` and `INTERACTIVE=1`) the board shows a DOOM-style menu before the game, to choose among the WADs the user supplied. The build uses the WADs of a folder the user points to, in place of the shareware `doom1.wad`.
+
+### 13.1. Pointing to the WADs
+
+```bash
+./fetch.sh --wad-dir /path/to/the/wads
+```
+
+`fetch.sh` stores the folder in `.wad-dir`, does not download `doom1.wad`, and lists what it found. The search goes up to four levels down, ignoring case, for `doom.wad`, `doom2.wad`, `plutonia.wad`, `tnt.wad` and the Master Levels WADs (those in a `master` folder, with the `DOOM2.MAP` that gives the map of each one). Without `--wad-dir`, `fetch.sh` downloads the shareware as before. The `WAD_DIR` variable has the same effect for a one-off build.
+
+| Variable | Default | Meaning |
+| :--- | :--- | :--- |
+| `WAD_DIR` | the folder in `.wad-dir` | Folder of the WADs |
+| `WAD_SET` | `doom doom2 plutonia master` | Games in the menu, in order: `doom`, `doom2`, `plutonia`, `tnt` and `master` |
+| `MENU` | 0 | 1 turns the menu on |
+
+Master Levels uses `doom2.wad` as its base, so `master` needs `doom2` in `WAD_SET`.
+
+### 13.2. How much fits in the SDRAM
+
+The WADs sit in sequence from `0x40100000`, each aligned to 4 KiB, in a single file `build-board/wads.bin`. The framebuffer and a 7 MB heap follow them and must end before `0x43780000`. `scripts/wads.sh` computes the map and refuses a set that does not fit, saying what to drop.
+
+| Set | Size of the WADs | Fits |
+| :--- | ---: | :--- |
+| `doom doom2 plutonia master` | 48.2 MB | Yes |
+| `doom doom2 tnt master` | 49.0 MB | Yes |
+| `doom doom2 plutonia tnt` | 62.6 MB | No |
+
+### 13.3. Loading and using it
+
+```bash
+MENU=1 VIDEO=1 INTERACTIVE=1 ./scripts/image.sh
+```
+
+The board image is built with `-O3 -funroll-loops` by default (the `OPT` variable picks another level). On the Spike timedemo this cuts the instructions per frame from 1,722,158 to 1,612,385 (6.4 %), with the same frame CRC-32. `image.sh` prints the usual commands, with `--wad build-board/wads.bin --wad-address 0x40100000`: the load is a single one, and the game finds each WAD by name in a table the build embeds.
+
+The menu uses the art of the first WAD (background, skull and font). The arrows or W and S move, Enter, E or space choose, and Esc goes back. Choosing a game opens DOOM with its `-iwad`. Choosing a Master Levels map opens DOOM II with that map's WAD and `-warp` to the right map, as the package's loader does. When the game exits (Quit Game, end by error or inactivity), the program restarts and returns to the menu.
+
+### 13.4. Checking the menu on Spike
+
+```bash
+./scripts/menu_test.sh
+```
+
+The script builds the `layout` target with a key script (`MENU_SCRIPT`: `u` and `d` move up and down, `l` and `r` change column, `e` chooses, `b` goes back, `p` saves the screen), runs it on Spike, checks the choice returned and writes the screens to `build-layout/menu-png/`. With `MENU_STOP=0` the game continues after the choice and opens the chosen WAD.

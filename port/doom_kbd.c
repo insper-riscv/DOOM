@@ -25,6 +25,8 @@
 #include "doomkeys.h"
 #include "doom_kbd.h"
 #ifndef DOOM_KBD_HOST_TEST
+#include <stdio.h>
+
 #include "doomstat.h"
 #endif
 
@@ -349,6 +351,9 @@ void __wrap_I_InitInput(void)
     key_use = 'e';
     key_fire = ' ';
     __real_I_InitInput();
+    /* Os mesmos controles em qualquer jogo da WAD: o registro deixa conferir pelo console o que ficou ativo */
+    printf("[DOOM] controles: frente=%c tras=%c esquerda=%c direita=%c usar=%c atirar=espaco ou ctrl; setas: girar e menus\n",
+           key_up, key_down, key_strafeleft, key_straferight, key_use);
 }
 #endif
 

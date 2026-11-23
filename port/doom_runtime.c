@@ -33,6 +33,11 @@
 #include "doomgeneric.h"
 #include "doom_platform.h"
 
+#ifdef DOOM_MENU
+#include "doom_menu.h"
+#include "wad_table.h"
+#endif
+
 #ifdef DOOM_CONSOLE_UART
 #include "memory_map.h"
 #endif
@@ -365,6 +370,52 @@ void _exit(int code)
 #endif
 }
 
+#ifdef DOOM_MENU
+
+/*
+ * Com o menu (MENU=1 no build.sh): mostra a escolha do jogo e monta os argumentos do DOOM a partir dela. Um jogo sai
+ * como `doom -iwad doom2.wad`; uma fase do Master Levels, como `doom -iwad doom2.wad -file attack.wad -warp 1`, que e
+ * o que o DMLOAD do pacote faz. A escolha vale ate o jogo reiniciar (Quit Game, fim por erro ou inatividade), que
+ * volta a este ponto e ao menu.
+ */
+int main(void)
+{
+    static char *args[8];
+    static char warp_text[8];
+    struct doom_menu_choice choice;
+    int argc = 0;
+
+    data_snapshot();
+    result_clear();
+    doom_measure_init();
+    doom_menu_run(&choice);
+    args[argc++] = (char *)"doom";
+    args[argc++] = (char *)"-iwad";
+    args[argc++] = (char *)doom_wad_table[choice.iwad].name;
+    if (choice.pwad >= 0)
+    {
+        snprintf(warp_text, sizeof(warp_text), "%d", choice.map);
+        args[argc++] = (char *)"-file";
+        args[argc++] = (char *)doom_wad_table[choice.pwad].name;
+        args[argc++] = (char *)"-warp";
+        args[argc++] = warp_text;
+    }
+    printf("[DOOM] menu: %s%s%s\n", doom_wad_table[choice.iwad].name, choice.pwad >= 0 ? " + " : "",
+           choice.pwad >= 0 ? doom_wad_table[choice.pwad].name : "");
+    console_flush();
+#ifdef DOOM_MENU_STOP
+    /* Teste no Spike: termina logo depois da escolha, para conferir o menu sem rodar o jogo */
+    htif_exit(0);
+#endif
+    doomgeneric_Create(argc, args);
+    for (;;)
+    {
+        doomgeneric_Tick();
+    }
+}
+
+#else
+
 int main(void)
 {
     static char *args[] = { DOOM_ARGS };
@@ -380,3 +431,5 @@ int main(void)
         doomgeneric_Tick();
     }
 }
+
+#endif /* DOOM_MENU */
