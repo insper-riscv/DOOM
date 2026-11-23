@@ -319,7 +319,11 @@ void doom_restart_idle(uint32_t idle_ms)
 /* Quit Game do menu: o jogo recomeca na tela de titulo, sem recarregar nada */
 void __wrap_I_Quit(void)
 {
+#ifdef DOOM_MENU
+    printf("[DOOM] Quit Game: reiniciando, volta ao menu de escolha do jogo\n");
+#else
     printf("[DOOM] Quit Game: reiniciando o jogo (titulo e menu)\n");
+#endif
     console_flush();
     restart_program();
 }
