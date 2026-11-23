@@ -27,25 +27,9 @@ Host requirements: `git`, `curl`, `sha256sum` and `docker`.
 
 `build.sh` and `run.sh` run inside the `ghcr.io/insper-riscv/dev_tools:latest` container. The run ends with `CRC-32 confere com o gabarito: 67371a4f`. Details are in [docs/en/BUILD.md](docs/en/BUILD.md).
 
-## 3. Licenses
+## 3. Choosing the games that go into the SDRAM
 
-The code in this repository is Apache 2.0 (`LICENSE` file). `doomgeneric` and the DOOM code are GPL-2.0 and are not kept in this repository. `fetch.sh` downloads them at build time.
-
-The resulting binary combines the game and the platform layer, so it is GPL-2.0. Anyone distributing it must include the GPL-2.0 text and the offer of the corresponding source code. Changes to `doomgeneric`, if needed, are kept as `.patch` files under GPL-2.0.
-
-The shareware `doom1.wad` has its own license, which allows redistributing only the original unmodified package. It is not kept in this repository either.
-
-## 4. The board
-
-The `board` target of `build.sh` produces the binary for the Insper-RISC-V `doom` platform. The console goes out over the JTAG UART, the clock comes from the platform `doom_clock.c`, and the WAD is loaded into SDRAM by `riscv-tools load-ram`. `VIDEO=1` turns on the VGA output and `INTERACTIVE=1` turns on the PS/2 keyboard and the full game; without them, the `-timedemo` leaves its result in a fixed SDRAM block that `dump-ram` reads. The SDRAM map, the commands and the comparison with Spike are in [docs/en/BOARD.md](docs/en/BOARD.md).
-
-```bash
-./fetch.sh && ./scripts/image.sh
-```
-
-## 5. Choosing the games that go into the SDRAM
-
-With the menu (`MENU=1`), the board loads the WADs you choose, and only those appear in the menu. The choice is the `WAD_SET` variable, a space-separated list of games, in the order they appear.
+With the menu (`MENU=1`), the board loads the WADs you choose, and only those appear in the menu. The choice is the `WAD_SET` variable, a space-separated list of games, in the order they appear. The default is `doom doom2 plutonia master`.
 
 | Name | Game | WAD looked up in the folder |
 | :--- | :--- | :--- |
@@ -55,25 +39,89 @@ With the menu (`MENU=1`), the board loads the WADs you choose, and only those ap
 | `tnt` | TNT: Evilution | `tnt.wad` |
 | `master` | Master Levels, 20 maps (uses DOOM II as its base) | The WADs of the `master` folder, with the `DOOM2.MAP` |
 
-All four games together do not fit in the 64 MB of SDRAM together with the game heap, so choose up to three plus `master`. `scripts/wads.sh` computes the map and refuses a set that does not fit, saying what to drop.
-
-| `WAD_SET` | WADs in the SDRAM | Fits |
-| :--- | ---: | :--- |
-| `doom doom2 plutonia master` (default) | 48.2 MB | Yes |
-| `doom doom2 tnt master` | 49.0 MB | Yes |
-| `doom doom2 master` | 30.8 MB | Yes |
-| `doom2` | 14.6 MB | Yes |
-| `doom doom2 plutonia tnt` | 62.6 MB | No |
-
-The sizes are those of the original v1.9 WADs. To choose, point to the folder of your WADs once and build the image with the `WAD_SET` you want:
+Point to the folder of your WADs once and build the image with the `WAD_SET` you want:
 
 ```bash
 ./fetch.sh --wad-dir /path/to/the/wads
 WAD_SET="doom doom2 tnt master" MENU=1 VIDEO=1 INTERACTIVE=1 ./scripts/image.sh
 ```
 
-`image.sh` joins the chosen WADs into `build-board/wads.bin`, lists each one with its address and SHA-256, and prints the `load-ram` that takes them to the SDRAM in one go. To change the set, run `image.sh` again with another `WAD_SET` and load the new image. The full use of the menu is in [docs/en/BOARD.md](docs/en/BOARD.md), section 13.
+`image.sh` joins the chosen WADs into `build-board/wads.bin`, lists each one with its address and SHA-256, and prints the `load-ram` that takes them to the SDRAM in one go. To change the set, run `image.sh` again with another `WAD_SET` and load the new image. Not every set fits on the board, as section 4 explains. The full use of the menu is in [docs/en/BOARD.md](docs/en/BOARD.md), section 13.
+
+## 4. The board
+
+The `board` target of `build.sh` produces the binary for the Insper-RISC-V `doom` platform. The console goes out over the JTAG UART, the clock comes from the platform `doom_clock.c`, and the WAD is loaded into SDRAM by `riscv-tools load-ram`. `VIDEO=1` turns on the VGA output and `INTERACTIVE=1` turns on the PS/2 keyboard and the full game; without them, the `-timedemo` leaves its result in a fixed SDRAM block that `dump-ram` reads. The SDRAM map, the commands and the comparison with Spike are in [docs/en/BOARD.md](docs/en/BOARD.md).
+
+```bash
+./fetch.sh && ./scripts/image.sh
+```
+
+### 4.1. The 64 MB SDRAM and the WADs
+
+The board has 64 MB of SDRAM, and the WADs share it with the game image, the framebuffer, a 7 MB heap and the stack. About 49.5 MB are left for the WADs. These are the sizes of the original v1.9 WADs:
+
+| WAD | Size |
+| :--- | ---: |
+| `doom.wad` (Ultimate DOOM) | 12.4 MB |
+| `doom2.wad` | 14.6 MB |
+| `plutonia.wad` | 17.4 MB |
+| `tnt.wad` | 18.2 MB |
+| Master Levels (the 20 maps together) | 3.8 MB |
+
+The four games together add up to 62.6 MB and do not fit. To put in three, write the three in `WAD_SET` and add the sizes: the total must stay below 49.5 MB. `scripts/wads.sh` does this sum and refuses a set that goes over, saying what to drop.
+
+| Choice | Total |
+| :--- | ---: |
+| `doom doom2 plutonia master` (default) | 48.2 MB |
+| `doom doom2 tnt master` | 49.0 MB |
+| `doom plutonia tnt` | 48.0 MB |
+
+Master Levels uses `doom2.wad` as its base, so `master` only goes in together with `doom2`. The default carries the Ultimate DOOM, DOOM II, Plutonia and the 20 maps of Master Levels.
+
+## 5. The keys
+
+### 5.1. Keys of the game choice menu
+
+| Key | What it does |
+| :--- | :--- |
+| Up arrow or W | Previous item |
+| Down arrow or S | Next item |
+| Left arrow or A | In the Master Levels list, goes to the left column |
+| Right arrow or D | In the Master Levels list, goes to the right column |
+| Enter, E or space | Chooses the game; on "Master Levels", opens the list; in the list, opens the map |
+| Esc or Backspace | In the Master Levels list, goes back to the game choice |
+
+### 5.2. Keys of the game
+
+They are the same in the three games and in Master Levels.
+
+| Key | What it does |
+| :--- | :--- |
+| W | Moves forward |
+| S | Moves backward |
+| A | Strafes left |
+| D | Strafes right |
+| Left arrow | Turns left |
+| Right arrow | Turns right |
+| E | Uses and opens doors |
+| Space or Ctrl | Fires |
+| Shift | Runs |
+| Alt with the left and right arrows | Strafes |
+| 1 to 7 | Switches weapon |
+| Tab | Shows the map |
+| Esc | Opens the game menu |
+| F10 and then Y | Quit Game: returns to the game choice menu |
+
+In the menus of the game itself the four arrows navigate, and W S A D and E act as up, down, left, right and Enter, except when typing the name of a saved game, where they are letters. The up and down keys have no function during play.
 
 ## 6. Contributing
 
 Every change enters through a Pull Request to `main`. The general rules of the organization are in [Insper-RISC-V](https://github.com/insper-riscv/Insper-RISC-V/blob/main/CONTRIBUTING.en.md).
+
+## 7. Licenses
+
+The code in this repository is Apache 2.0 (`LICENSE` file). `doomgeneric` and the DOOM code are GPL-2.0 and are not kept in this repository. `fetch.sh` downloads them at build time.
+
+The resulting binary combines the game and the platform layer, so it is GPL-2.0. Anyone distributing it must include the GPL-2.0 text and the offer of the corresponding source code. Changes to `doomgeneric`, if needed, are kept as `.patch` files under GPL-2.0.
+
+The shareware `doom1.wad` has its own license, which allows redistributing only the original unmodified package. It is not kept in this repository either.

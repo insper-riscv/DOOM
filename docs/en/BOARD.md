@@ -248,7 +248,7 @@ MENU=1 VIDEO=1 INTERACTIVE=1 ./scripts/image.sh
 
 The board image is built with `-O3 -funroll-loops` by default (the `OPT` variable picks another level). On the Spike timedemo this cuts the instructions per frame from 1,722,158 to 1,612,385 (6.4 %), with the same frame CRC-32. `image.sh` prints the usual commands, with `--wad build-board/wads.bin --wad-address 0x40100000`: the load is a single one, and the game finds each WAD by name in a table the build embeds.
 
-The menu uses the art of the first WAD (background, skull and font). The arrows or W and S move, Enter, E or space choose, and Esc goes back. Choosing a game opens DOOM with its `-iwad`. Choosing a Master Levels map opens DOOM II with that map's WAD and `-warp` to the right map, as the package's loader does. When the game exits (Quit Game, end by error or inactivity), the program restarts and returns to the menu.
+The menu uses the art of the first WAD (background, skull and font). The arrows or W and S move, Enter, E or space choose, and Esc goes back. Choosing a game opens DOOM with its `-iwad`. Choosing a Master Levels map opens DOOM II with that map's WAD and `-warp` to the right map, as the package's loader does. When the game exits (Quit Game, end by error or inactivity), the program restarts and returns to the game choice menu. The End Game of the DOOM menu (Esc) does not restart the program: it leads to the title screen of the current game.
 
 ### 13.4. Checking the menu on Spike
 

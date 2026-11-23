@@ -248,7 +248,7 @@ MENU=1 VIDEO=1 INTERACTIVE=1 ./scripts/image.sh
 
 A imagem da placa sai com `-O3 -funroll-loops` por padrão (a variável `OPT` escolhe outro nível). No timedemo do Spike isso reduz as instruções por quadro de 1.722.158 para 1.612.385 (6,4 %), com o mesmo CRC-32 dos quadros. O `image.sh` imprime os comandos de sempre, com `--wad build-board/wads.bin --wad-address 0x40100000`: a carga é uma só, e o jogo acha cada WAD pelo nome numa tabela que o build embute.
 
-O menu usa a arte da primeira WAD (fundo, caveira e fonte). Setas ou W e S movem, Enter, E ou espaço escolhem, e Esc volta. A escolha de um jogo abre o DOOM com `-iwad` dele. A escolha de uma fase do Master Levels abre o DOOM II com a WAD da fase e `-warp` no mapa certo, como o programa de carga do pacote faz. Ao sair do jogo (Quit Game, fim por erro ou inatividade), o programa reinicia e volta ao menu.
+O menu usa a arte da primeira WAD (fundo, caveira e fonte). Setas ou W e S movem, Enter, E ou espaço escolhem, e Esc volta. A escolha de um jogo abre o DOOM com `-iwad` dele. A escolha de uma fase do Master Levels abre o DOOM II com a WAD da fase e `-warp` no mapa certo, como o programa de carga do pacote faz. Ao sair do jogo (Quit Game, fim por erro ou inatividade), o programa reinicia e volta ao menu de escolha do jogo. O End Game do menu do DOOM (Esc) não reinicia o programa: leva à tela de título do jogo atual.
 
 ### 13.4. Conferir o menu no Spike
 
