@@ -56,10 +56,7 @@ No fim do `-timedemo` o jogo grava 11 palavras de 32 bits a partir de `0x43FFF00
 
 ## 5. Preparar a placa
 
-Estes passos são da plataforma e estão em [`docs/pt-br/platform/doom.md`](https://github.com/insper-riscv/Insper-RISC-V/blob/main/docs/pt-br/platform/doom.md) do Insper-RISC-V. Resumo.
-
-1. Compilar e programar o `.sof` da plataforma `doom` na DE0-CV (`riscv-tools board` do Insper-RISC-V).
-2. Gravar o carregador `runtime/doom_loader.S` na banca A da FLASH (seção 4.1 daquele documento). Ele espera a magia `0x4D4F4F44` em `launch` (`0x43FFFFF8`) e salta para `0x40000000`.
+O passo a passo completo, do `.sof` ao menu no monitor, está em [INSTALAR.md](INSTALAR.md). A plataforma `doom` tem a FLASH como janela da SDRAM e não tem carregador: a BOOT salta direto para `0x1000`, onde o `scripts/load_flash.py` grava o `doom.bin`. A descrição da plataforma está em [`docs/pt-br/platform/doom.md`](https://github.com/insper-riscv/Insper-RISC-V/blob/main/docs/pt-br/platform/doom.md) do Insper-RISC-V.
 
 ## 6. Comandos
 
